@@ -593,6 +593,9 @@ def readPanopticSportsinfos(datadir):
                            )
     return scene_info
 
+######################################################################################
+############################    MultipleViewinfos    ################################
+######################################################################################
 def readMultipleViewinfos(datadir,llffhold=8):
 
     cameras_extrinsic_file = os.path.join(datadir, "sparse_/images.bin")
@@ -632,11 +635,30 @@ def readMultipleViewinfos(datadir,llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
+
+def readDiva360infos(datadir):
+    ### TODO: ### implement this function
+    # parser = Parser()
+
+    # pts = parser.means3d
+    ...
+
+    ...
+    scene_info = None # TODO
+    return scene_info
+
+def readDFAinfos(datadir):
+    ### TODO: ### implement this function
+    pass
+
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender" : readNerfSyntheticInfo,
     "dynerf" : readdynerfInfo,
     "nerfies": readHyperDataInfos,  # NeRFies & HyperNeRF dataset proposed by [https://github.com/google/hypernerf/releases/tag/v0.1]
     "PanopticSports" : readPanopticSportsinfos,
-    "MultipleView": readMultipleViewinfos
+    "MultipleView": readMultipleViewinfos,
+    "Diva360" : readDiva360infos,
+    "DFA" : readDFAinfos
 }
