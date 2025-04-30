@@ -23,7 +23,7 @@ class ParamGroup:
             shorthand = False
             if key.startswith("_"):
                 shorthand = True
-                key = key[1:]
+                key = key[1:] # detach "_"
             t = type(value)
             value = value if not fill_none else None 
             if shorthand:

@@ -17,6 +17,8 @@ SRC_ROOT="/data/rvi/dataset/Diva360_data/processed_data"
 mkdir -p "$OUTPUT_DIR/multipleview"
 
 for object_name in $(ls "$SRC_ROOT"); do
+    echo -e "Processing object diva360: $object_name\n"
+    
     OBJ_SRC="$SRC_ROOT/$object_name/frames_1"
     OBJ_DST="$OUTPUT_DIR/multipleview/$object_name"
     mkdir -p "$OBJ_DST"
@@ -26,12 +28,26 @@ for object_name in $(ls "$SRC_ROOT"); do
         mkdir -p "$CAM_DST"
         for img in "$CAM_SRC"/*.png; do
             img_name=$(basename "$img")
-            # frame_00001.jpg 형태로 변환
-            frame_num=$(echo "$img_name" | sed -n 's/^.*\([0-9]\{5\}\)\.png$/\1/p')
-            # echo "image : $img, link : $CAM_DST/frame_${frame_num}.png"
-            ln -s "$img" "$CAM_DST/frame_${frame_num}.png"
+            frame_num=$(echo "$img_name" | sed 's/^000//g') # .png 포함 경로
+            # echo "image : $img, link : $CAM_DST/frame_${frame_num}"
+            ln -sf "$img" "$CAM_DST/frame_${frame_num}"
         done
     done
+
+    TRAIN_JSONS="$SRC_ROOT/$object_name/transforms_train.json"
+    TEST_JSONS="$SRC_ROOT/$object_name/transforms_test.json"
+
+    TRAIN_JSOND="$OBJ_DST/transforms_train.json"
+    TEST_JSOND="$OBJ_DST/transforms_test.json"
+    
+    cp "$TRAIN_JSONS" "$TRAIN_JSOND"
+    cp "$TEST_JSONS" "$TEST_JSOND"
+    
+    # 먼저 undist/ 제거
+    sed -i 's|undist/||g' "$TRAIN_JSOND" "$TEST_JSOND"
+    
+    # 그 다음 파일명 패턴 변경 (000xxxxx.png -> frame_xxxxx.png)
+    sed -i 's|/000\([0-9]\{5\}\.png\)|/frame_\1|g' "$TRAIN_JSOND" "$TEST_JSOND"
 done
 
 echo "심볼릭 링크 생성 완료: $OUTPUT_DIR/multipleview"

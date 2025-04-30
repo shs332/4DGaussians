@@ -256,7 +256,8 @@ def generateCamerasFromTransforms(path, template_transformsfile, extension, maxt
                             image_path=None, image_name=None, width=image.shape[1], height=image.shape[2],
                             time = time, mask=None))
     return cam_infos
-def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png", mapper = {}):
+
+def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png", mapper = {}): # only used in readNerfSyntheticInfo
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
@@ -269,10 +270,20 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
         for idx, frame in enumerate(frames):
             cam_name = os.path.join(path, frame["file_path"] + extension)
             time = mapper[frame["time"]]
-            matrix = np.linalg.inv(np.array(frame["transform_matrix"]))
-            R = -np.transpose(matrix[:3,:3])
-            R[:,0] = -R[:,0]
-            T = -matrix[:3, 3]
+            # matrix = np.linalg.inv(np.array(frame["transform_matrix"]))
+            # R = -np.transpose(matrix[:3,:3])
+            # R[:,0] = -R[:,0]
+            # T = -matrix[:3, 3]
+            
+            # 'transform_matrix' in json is a c2w OpenGL/Blender matrix
+            c2w = np.array(frame["transform_matrix"])
+            # change from OpenGL/Blender camera axes (Y up, Z back; -Z look-at direction) to COLMAP (Y down, Z forward)
+            c2w[:3, 1:3] *= -1 # flip Y and Z axes
+
+            # get the world-to-camera transform and set R, T
+            w2c = np.linalg.inv(c2w)
+            R = np.transpose(w2c[:3,:3])  # R is stored transposed due to 'glm' in CUDA code
+            T = w2c[:3, 3]
 
             image_path = os.path.join(path, cam_name)
             image_name = Path(cam_name).stem
@@ -286,6 +297,9 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
             image = PILtoTorch(image,(800,800))
+            
+            # breakpoint()
+            
             fovy = focal2fov(fov2focal(fovx, image.shape[1]), image.shape[2])
             FovY = fovy 
             FovX = fovx
@@ -295,6 +309,61 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
                             time = time, mask=None))
             
     return cam_infos
+
+def readCamerasFromDiva360(path, transformsfile, white_background, extension=".png", mapper = {}): 
+    ### TODO: modify ###
+    cam_infos = []
+
+    with open(os.path.join(path, transformsfile)) as json_file:
+        contents = json.load(json_file)
+        try:
+            fovx = contents["camera_angle_x"]
+        except:
+            fovx = focal2fov(contents['fl_x'],contents['w'])
+        frames = contents["frames"]
+        for idx, frame in enumerate(frames):
+            cam_name = os.path.join(path, frame["file_path"] + extension)
+            time = mapper[frame["time"]]
+            # matrix = np.linalg.inv(np.array(frame["transform_matrix"]))
+            # R = -np.transpose(matrix[:3,:3])
+            # R[:,0] = -R[:,0]
+            # T = -matrix[:3, 3]
+            
+            # 'transform_matrix' in json is a c2w OpenGL/Blender matrix
+            c2w = np.array(frame["transform_matrix"])
+            # change from OpenGL/Blender camera axes (Y up, Z back; -Z look-at direction) to COLMAP (Y down, Z forward)
+            c2w[:3, 1:3] *= -1 # flip Y and Z axes
+
+            # get the world-to-camera transform and set R, T
+            w2c = np.linalg.inv(c2w)
+            R = np.transpose(w2c[:3,:3])  # R is stored transposed due to 'glm' in CUDA code
+            T = w2c[:3, 3]
+
+            image_path = os.path.join(path, cam_name)
+            image_name = Path(cam_name).stem
+            image = Image.open(image_path)
+
+            im_data = np.array(image.convert("RGBA"))
+
+            bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
+
+            norm_data = im_data / 255.0
+            arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
+            image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+            
+            ### TODO: modify fov correctly###
+            # fovy, fovx both exist for diva360
+            image = PILtoTorch(image,(800,800))
+            fovy = focal2fov(fov2focal(fovx, image.shape[1]), image.shape[2])
+            FovY = fovy 
+            FovX = fovx
+
+            cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                            image_path=image_path, image_name=image_name, width=image.shape[1], height=image.shape[2],
+                            time = time, mask=None))
+            
+    return cam_infos
+
 def read_timeline(path):
     with open(os.path.join(path, "transforms_train.json")) as json_file:
         train_json = json.load(json_file)
@@ -310,6 +379,7 @@ def read_timeline(path):
         timestamp_mapper[time] = time/max_time_float
 
     return timestamp_mapper, max_time_float
+
 def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
     timestamp_mapper, max_time = read_timeline(path)
     print("Reading Training Transforms")
@@ -349,7 +419,11 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
                            ply_path=ply_path,
                            maxtime=max_time
                            )
+    
+    # breakpoint()
+    
     return scene_info
+
 def format_infos(dataset,split):
     # loading
     cameras = []
@@ -594,7 +668,7 @@ def readPanopticSportsinfos(datadir):
     return scene_info
 
 ######################################################################################
-############################    MultipleViewinfos    ################################
+############################    MultipleViewinfos    #################################
 ######################################################################################
 def readMultipleViewinfos(datadir,llffhold=8):
 
@@ -636,15 +710,46 @@ def readMultipleViewinfos(datadir,llffhold=8):
     return scene_info
 
 
-def readDiva360infos(datadir):
+def readDiva360infos(datadir): 
     ### TODO: ### implement this function
     # parser = Parser()
 
     # pts = parser.means3d
-    ...
+    cameras_extrinsic_file = os.path.join(datadir, "sparse_/images.bin")
+    cameras_intrinsic_file = os.path.join(datadir, "sparse_/cameras.bin")
+    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    from scene.multipleview_dataset import multipleview_dataset
+    train_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="train")
+    test_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="test")
 
-    ...
-    scene_info = None # TODO
+    train_cam_infos_ = format_infos(train_cam_infos,"train")
+    nerf_normalization = getNerfppNorm(train_cam_infos_)
+
+    ply_path = os.path.join(datadir, "points3D_multipleview.ply")
+    bin_path = os.path.join(datadir, "points3D_multipleview.bin")
+    txt_path = os.path.join(datadir, "points3D_multipleview.txt")
+    if not os.path.exists(ply_path):
+        print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
+        try:
+            xyz, rgb, _ = read_points3D_binary(bin_path)
+        except:
+            xyz, rgb, _ = read_points3D_text(txt_path)
+        storePly(ply_path, xyz, rgb)
+    
+    try:
+        pcd = fetchPly(ply_path)
+        
+    except:
+        pcd = None
+    
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           video_cameras=test_cam_infos.video_cam_infos,
+                           maxtime=0,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
     return scene_info
 
 def readDFAinfos(datadir):
