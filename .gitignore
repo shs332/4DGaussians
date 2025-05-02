@@ -12,3 +12,4 @@ submodules/
 **data**
 **/*.png
 multipleviewdata_temp/**/*.png
+test

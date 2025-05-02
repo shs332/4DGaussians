@@ -34,12 +34,12 @@ class multipleview_dataset(Dataset):
         image_paths=[]
         image_poses=[]
         image_times=[]
-        for idx, key in enumerate(cam_extrinsics):
+        for idx, key in enumerate(cam_extrinsics): # length of cam_extrinsics : # of cameras
             extr = cam_extrinsics[key]
             R = np.transpose(qvec2rotmat(extr.qvec))
             T = np.array(extr.tvec)
 
-            number = os.path.basename(extr.name)[5:-4]
+            number = os.path.basename(extr.name)[5:-4] # camera number ex) image12.jpg(in colmap) -> 12
             images_folder=os.path.join(cam_folder,"cam"+number.zfill(2))
 
             image_range=range(image_length)

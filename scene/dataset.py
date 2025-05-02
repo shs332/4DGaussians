@@ -20,13 +20,13 @@ class FourDGSdataset(Dataset):
         # breakpoint()
 
         if self.dataset_type != "PanopticSports":
-            try:
+            try: # try to load the image from the dataset, diva360/DFA this case
                 image, w2c, time = self.dataset[index]
                 R,T = w2c
                 FovX = focal2fov(self.dataset.focal[0], image.shape[2])
-                FovY = focal2fov(self.dataset.focal[0], image.shape[1])
+                FovY = focal2fov(self.dataset.focal[0], image.shape[1]) # use same focal length for both axes
                 mask=None
-            except:
+            except: # single image per camera, ex) dnerf
                 caminfo = self.dataset[index]
                 image = caminfo.image
                 R = caminfo.R

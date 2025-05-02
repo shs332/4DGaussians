@@ -42,6 +42,11 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
         self.video_cameras = {}
+
+        # if os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
+        #     print("Diva360 Dataset!!!")
+        #     scene_info = sceneLoadTypeCallbacks["Diva360"](args.source_path)
+        #     dataset_type="Diva360"
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, args.llffhold)
             dataset_type="colmap"

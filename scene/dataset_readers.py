@@ -410,7 +410,6 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
         # xyz = -np.array(pcd.points)
         # pcd = pcd._replace(points=xyz)
 
-
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
@@ -420,11 +419,33 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
                            maxtime=max_time
                            )
     
-    # breakpoint()
+    breakpoint()
     
     return scene_info
 
 def format_infos(dataset,split):
+    # loading
+    cameras = []
+    image = dataset[0][0] ## image : [C,W,H]
+    if split == "train":
+        for idx in tqdm(range(len(dataset))):
+            image_path = None
+            image_name = f"{idx}"
+            time = dataset.image_times[idx]
+            # matrix = np.linalg.inv(np.array(pose))
+            R,T = dataset.load_pose(idx)
+
+            # breakpoint()
+            
+            FovX = focal2fov(dataset.focal[0], image.shape[1])
+            FovY = focal2fov(dataset.focal[0], image.shape[2])
+            cameras.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                                image_path=image_path, image_name=image_name, width=image.shape[2], height=image.shape[1],
+                                time = time, mask=None))
+
+    return cameras
+
+def format_infos_diva360(dataset,split):
     # loading
     cameras = []
     image = dataset[0][0]
@@ -435,8 +456,11 @@ def format_infos(dataset,split):
             time = dataset.image_times[idx]
             # matrix = np.linalg.inv(np.array(pose))
             R,T = dataset.load_pose(idx)
-            FovX = focal2fov(dataset.focal[0], image.shape[1])
-            FovY = focal2fov(dataset.focal[0], image.shape[2])
+
+            # breakpoint()
+            
+            FovY = focal2fov(dataset.focal[0], image.shape[1])
+            FovX = focal2fov(dataset.focal[1], image.shape[2])
             cameras.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                                 image_path=image_path, image_name=image_name, width=image.shape[2], height=image.shape[1],
                                 time = time, mask=None))
@@ -676,6 +700,9 @@ def readMultipleViewinfos(datadir,llffhold=8):
     cameras_intrinsic_file = os.path.join(datadir, "sparse_/cameras.bin")
     cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
     cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+
+    # breakpoint()
+    
     from scene.multipleview_dataset import multipleview_dataset
     train_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="train")
     test_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="test")
@@ -711,45 +738,63 @@ def readMultipleViewinfos(datadir,llffhold=8):
 
 
 def readDiva360infos(datadir): 
-    ### TODO: ### implement this function
-    # parser = Parser()
+    ### TODO: implement this function ### 
+    with open(os.path.join(datadir, "transforms_train.json"), "r") as f:
+        train_json = json.load(f)
+    with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
+        test_json = json.load(f)
 
-    # pts = parser.means3d
-    cameras_extrinsic_file = os.path.join(datadir, "sparse_/images.bin")
-    cameras_intrinsic_file = os.path.join(datadir, "sparse_/cameras.bin")
-    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    from scene.multipleview_dataset import multipleview_dataset
-    train_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="train")
-    test_cam_infos = multipleview_dataset(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, cam_folder=datadir,split="test")
 
-    train_cam_infos_ = format_infos(train_cam_infos,"train")
+    cam_intrinsics = {}
+    cam_extrinsics = {}
+
+    frame = train_json["frames"][0] # first camera
+    cam_intrinsics[1] = {
+        "id": 1,
+        "model": "PINHOLE",
+        "width": frame["w"],
+        "height": frame["h"],
+        "params": [frame["fl_x"], frame["fl_y"], frame["cx"], frame["cy"]]
+    }
+    
+    # Diva360_dataset 생성
+    from scene.Diva360 import Diva360_dataset
+    train_cam_infos = Diva360_dataset(cam_extrinsics=cam_extrinsics, 
+                                      cam_intrinsics=cam_intrinsics, 
+                                      cam_folder=datadir, 
+                                      split="train")
+    test_cam_infos = Diva360_dataset(cam_extrinsics=cam_extrinsics, 
+                                     cam_intrinsics=cam_intrinsics, 
+                                     cam_folder=datadir, 
+                                     split="test")
+    
+    # format_infos 함수를 사용하여 train_cam_infos 포맷 변환
+    train_cam_infos_ = format_infos(train_cam_infos, "train")
+    
+    # Normalization 계산
     nerf_normalization = getNerfppNorm(train_cam_infos_)
-
-    ply_path = os.path.join(datadir, "points3D_multipleview.ply")
-    bin_path = os.path.join(datadir, "points3D_multipleview.bin")
-    txt_path = os.path.join(datadir, "points3D_multipleview.txt")
-    if not os.path.exists(ply_path):
-        print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
-        try:
-            xyz, rgb, _ = read_points3D_binary(bin_path)
-        except:
-            xyz, rgb, _ = read_points3D_text(txt_path)
-        storePly(ply_path, xyz, rgb)
     
-    try:
-        pcd = fetchPly(ply_path)
-        
-    except:
-        pcd = None
+    # 랜덤 포인트 클라우드 생성
+    ply_path = os.path.join(datadir, "points3D_diva360.ply")
     
+    # 새로운 랜덤 포인트 생성 (2000개 포인트)
+    num_pts = 2000
+    xyz = np.random.random((num_pts, 3)) * 6 - 3  # -3 ~ 3 범위
+    rgb = np.random.random((num_pts, 3)) * 255  # 색상: 0~255
+    pcd = BasicPointCloud(points=xyz, colors=rgb/255.0, normals=np.zeros((num_pts, 3)))
+    
+    # PLY 파일로 저장
+    storePly(ply_path, xyz, rgb)
+    
+    # SceneInfo 생성 및 반환
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            video_cameras=test_cam_infos.video_cam_infos,
-                           maxtime=0,
+                           maxtime=1.0,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
+    
     return scene_info
 
 def readDFAinfos(datadir):
