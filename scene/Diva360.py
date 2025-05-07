@@ -14,27 +14,28 @@ import json
 class Diva360_dataset(Dataset):
     def __init__(
         self,
-        cam_extrinsics,
-        cam_intrinsics,
         cam_folder,
         split
     ):
+        with open(os.path.join(cam_folder, f"transforms_{split}.json"), "r") as f:
+            meta = json.load(f)
+        frames = meta["frames"] # transforms_train or transforms_test
+
         # 카메라 내부 파라미터 설정
-        self.focal = [cam_intrinsics[1]["params"][1], cam_intrinsics[1]["params"][0]] # focal[0] = fl_y, focal[1] = fl_x
-        height = cam_intrinsics[1]["height"]
-        width = cam_intrinsics[1]["width"]
-        self.FovY = focal2fov(self.focal[1], height)
-        self.FovX = focal2fov(self.focal[0], width)
+        self.focal = [frames[0]["fl_y"], frames[0]["fl_x"]] # focal[0] = fl_y, focal[1] = fl_x
+        height = frames[0]["h"]
+        width = frames[0]["w"]
+        self.FovY = focal2fov(self.focal[0], height)
+        self.FovX = focal2fov(self.focal[1], width)
         self.transform = T.ToTensor()
         
         # 이미지 경로, 포즈, 시간 로드
-        self.image_paths, self.image_poses, self.image_times = self.load_images_path(cam_folder, cam_extrinsics, cam_intrinsics, split)
-        self.video_cam_infos = None
+        self.image_paths, self.image_poses, self.image_times = self.load_images_path(cam_folder, None, None, split)
+
         # 비디오 카메라 정보 초기화
-        # if split == "test":
-        #     self.video_cam_infos = self.get_video_cam_infos(cam_folder)
-        # else:
-        #     self.video_cam_infos = None
+        if split == "test":
+            pass
+            self.video_cam_infos = self.get_video_cam_infos(cam_folder)
     
     def load_images_path(self, cam_folder, cam_extrinsics, cam_intrinsics, split):
         # JSON 파일 로드
@@ -44,18 +45,11 @@ class Diva360_dataset(Dataset):
         image_paths = []
         image_poses = []
         image_times = []
-        
-        # 유효한 프레임만 필터링
-        valid_frames = [f for f in meta["frames"] if "file_path" in f and "transform_matrix" in f and len(f["transform_matrix"]) > 0]
-        total_frames = len(valid_frames)
-        
-        for i, frame in enumerate(valid_frames):
-            file_path = frame["file_path"]
-            image_path = os.path.join(cam_folder, file_path)
-            
-            # transform_matrix에서 카메라 포즈 가져오기
-            c2w = np.array(frame["transform_matrix"])
-            
+
+        image_length = len(os.listdir(os.path.join(cam_folder, "cam00"))) # change cam__ if dir does not exist
+        for i, frame in enumerate(meta["frames"]): ## every element in "frames"            
+            # transform_matrix에서 카메라 포즈 가져오기, Blender/OpenGL c2w
+            c2w = np.array(frame["transform_matrix"]) 
             # OpenGL에서 COLMAP 좌표계로 변환
             c2w[:3, 1:3] *= -1
             
@@ -63,42 +57,54 @@ class Diva360_dataset(Dataset):
             w2c = np.linalg.inv(c2w)
             R = np.transpose(w2c[:3, :3])
             T = w2c[:3, 3]
-            
-            # 카메라 시간 (0~1 사이 정규화)
-            if "time" in frame:
-                time = frame["time"]
-            else:
-                time = float(i) / total_frames
-            
-            # 리스트에 추가
-            image_paths.append(image_path)
-            image_poses.append((R, T))
-            image_times.append(time)
+
+            file_path = frame["file_path"]
+            cam_num = os.path.dirname(file_path)
+            images_folder = os.path.join(cam_folder, cam_num) # .../cam01
+
+            for frame_idx in range(image_length):
+                # 리스트에 추가
+                image_path = os.path.join(images_folder, f"frame_{str(frame_idx).zfill(5)}.png") # start from frame_00000.png 
+                image_paths.append(image_path)
+                image_poses.append((R, T))
+                image_times.append(float((frame_idx+1)/image_length))
         
         return image_paths, image_poses, image_times
     
     def get_video_cam_infos(self, datadir):
-        # 카메라 경로 추출
-        try:
-            # poses_bounds_multipleview.npy 파일이 있으면 사용
-            poses_arr = np.load(os.path.join(datadir, "poses_bounds_multipleview.npy"))
-            poses = poses_arr[:, :-2].reshape([-1, 3, 5])
-            near_fars = poses_arr[:, -2:]
-            poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
-        except FileNotFoundError:
-            # 없으면 transform_test.json에서 카메라 포즈 추출
-            with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
-                test_meta = json.load(f)
+        # # 카메라 경로 추출
+        # try:
+        #     # poses_bounds_multipleview.npy 파일이 있으면 사용
+        #     poses_arr = np.load(os.path.join(datadir, "poses_bounds_multipleview.npy"))
+        #     poses = poses_arr[:, :-2].reshape([-1, 3, 5])
+        #     near_fars = poses_arr[:, -2:]
+        #     poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
+        # except FileNotFoundError:
+        #     # 없으면 transform_test.json에서 카메라 포즈 추출
+        #     with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
+        #         test_meta = json.load(f)
             
-            # 유효한 프레임으로부터 카메라 포즈 추출
-            poses = []
-            for frame in test_meta["frames"]:
-                if "transform_matrix" in frame and len(frame["transform_matrix"]) > 0:
-                    poses.append(np.array(frame["transform_matrix"]))
+        #     # 유효한 프레임으로부터 카메라 포즈 추출
+        #     poses = []
+        #     for frame in test_meta["frames"]:
+        #         if "transform_matrix" in frame and len(frame["transform_matrix"]) > 0:
+        #             poses.append(np.array(frame["transform_matrix"]))
             
-            if not poses:
-                # 유효한 포즈가 없으면 빈 배열 반환
-                return []
+        #     if not poses:
+        #         # 유효한 포즈가 없으면 빈 배열 반환
+        #         return []
+        with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
+            test_meta = json.load(f)
+        
+        # 유효한 프레임으로부터 카메라 포즈 추출
+        poses = []
+        for frame in test_meta["frames"]:
+            if "transform_matrix" in frame and len(frame["transform_matrix"]) > 0:
+                poses.append(np.array(frame["transform_matrix"])[:3,:]) # 4x4 transform matrix에서 3x4로 변환
+
+        poses = np.array(poses)
+            
+        # breakpoint()
         
         # 나선형 카메라 경로 생성
         N_views = 120  # 비디오용 뷰 개수
@@ -113,7 +119,6 @@ class Diva360_dataset(Dataset):
         image = Image.open(self.image_paths[0])
         image = self.transform(image)
         
-        # 각 포즈마다 카메라 정보 생성
         for idx, p in enumerate(val_poses):
             image_path = None
             image_name = f"{idx}"
@@ -126,22 +131,9 @@ class Diva360_dataset(Dataset):
             T = -pose[:3,3].dot(R)
             FovX = self.FovX
             FovY = self.FovY
-            
-            cameras.append(CameraInfo(
-                uid=idx, 
-                R=R, 
-                T=T, 
-                FovY=FovY, 
-                FovX=FovX, 
-                image=image,
-                image_path=image_path, 
-                image_name=image_name, 
-                width=image.shape[2], 
-                height=image.shape[1],
-                time=time, 
-                mask=None
-            ))
-        
+            cameras.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                                image_path=image_path, image_name=image_name, width=image.shape[2], height=image.shape[1],
+                                time = time, mask=None))
         return cameras
     
     def __len__(self):

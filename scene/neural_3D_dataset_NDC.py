@@ -187,6 +187,7 @@ def get_spiral(c2ws_all, near_fars, rads_scale=1.0, N_views=120):
     Generate a set of poses using NeRF's spiral camera trajectory as validation poses.
     """
     # center pose
+    # breakpoint()
     c2w = average_poses(c2ws_all)
 
     # Get average pose
