@@ -8,7 +8,35 @@ from scene.dataset_readers import CameraInfo
 from scene.neural_3D_dataset_NDC import get_spiral
 from torchvision import transforms as T
 import json
-# from scene.dataset_readers import readCamerasFromDiva360
+from scipy.spatial.transform import Rotation
+
+def diva360_to_colmap(c2w):
+    c2w[2, :] *= -1  # flip whole world upside down
+    c2w = c2w[[1, 0, 2, 3], :]
+    c2w[0:3, 1] *= -1  # flip the y and z axis
+    c2w[0:3, 2] *= -1
+
+    w2c = np.linalg.inv(c2w)
+    rot = w2c[:3, :3]
+    tvec = w2c[:3, -1]
+
+    rotation = Rotation.from_matrix(rot)
+    qvec = rotation.as_quat()  # Returns [x, y, z, w]
+    qvec = np.array(qvec)[[3, 0, 1, 2]]
+
+    return qvec, tvec
+
+def qvec2rotmat(qvec):
+    return np.array([
+        [1 - 2 * qvec[2]**2 - 2 * qvec[3]**2,
+        2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
+        2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2]],
+        [2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
+        1 - 2 * qvec[1]**2 - 2 * qvec[3]**2,
+        2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1]],
+        [2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
+        2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
+        1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]])
 
 ### TODO: implement based on multipleview_dataset.py ###
 class Diva360_dataset(Dataset):
@@ -27,6 +55,8 @@ class Diva360_dataset(Dataset):
         width = frames[0]["w"]
         self.FovY = focal2fov(self.focal[0], height)
         self.FovX = focal2fov(self.focal[1], width)
+        # breakpoint()
+        
         self.transform = T.ToTensor()
         
         # 이미지 경로, 포즈, 시간 로드
@@ -34,11 +64,12 @@ class Diva360_dataset(Dataset):
 
         # 비디오 카메라 정보 초기화
         if split == "test":
-            pass
             self.video_cam_infos = self.get_video_cam_infos(cam_folder)
     
     def load_images_path(self, cam_folder, cam_extrinsics, cam_intrinsics, split):
         # JSON 파일 로드
+        from scipy.spatial.transform import Rotation as Rot
+        
         with open(os.path.join(cam_folder, f"transforms_{split}.json"), "r") as f:
             meta = json.load(f)
         
@@ -49,7 +80,19 @@ class Diva360_dataset(Dataset):
         image_length = len(os.listdir(os.path.join(cam_folder, "cam00"))) # change cam__ if dir does not exist
         for i, frame in enumerate(meta["frames"]): ## every element in "frames"            
             # transform_matrix에서 카메라 포즈 가져오기, Blender/OpenGL c2w
-            c2w = np.array(frame["transform_matrix"]) 
+            c2w = np.array(frame["transform_matrix"])
+
+            # qvec, T_1 = diva360_to_colmap(c2w) # COLMAP 좌표계로 변환
+            # R = qvec2rotmat(qvec) # 회전 행렬로 변환
+            # R_1 = R.transpose()
+            
+            # w2c = np.linalg.inv(c2w)
+            # R = -np.transpose(w2c[:3,:3])
+            # R[:,0] = -R[:,0]
+            # T = -w2c[:3, 3]
+
+            # breakpoint()
+
             # OpenGL에서 COLMAP 좌표계로 변환
             c2w[:3, 1:3] *= -1
             
@@ -57,6 +100,9 @@ class Diva360_dataset(Dataset):
             w2c = np.linalg.inv(c2w)
             R = np.transpose(w2c[:3, :3])
             T = w2c[:3, 3]
+
+            # ### R, T 비교
+            # breakpoint()
 
             file_path = frame["file_path"]
             cam_num = os.path.dirname(file_path)
@@ -68,31 +114,11 @@ class Diva360_dataset(Dataset):
                 image_paths.append(image_path)
                 image_poses.append((R, T))
                 image_times.append(float((frame_idx+1)/image_length))
-        
+            # breakpoint()
+        # breakpoint()
         return image_paths, image_poses, image_times
     
     def get_video_cam_infos(self, datadir):
-        # # 카메라 경로 추출
-        # try:
-        #     # poses_bounds_multipleview.npy 파일이 있으면 사용
-        #     poses_arr = np.load(os.path.join(datadir, "poses_bounds_multipleview.npy"))
-        #     poses = poses_arr[:, :-2].reshape([-1, 3, 5])
-        #     near_fars = poses_arr[:, -2:]
-        #     poses = np.concatenate([poses[..., 1:2], -poses[..., :1], poses[..., 2:4]], -1)
-        # except FileNotFoundError:
-        #     # 없으면 transform_test.json에서 카메라 포즈 추출
-        #     with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
-        #         test_meta = json.load(f)
-            
-        #     # 유효한 프레임으로부터 카메라 포즈 추출
-        #     poses = []
-        #     for frame in test_meta["frames"]:
-        #         if "transform_matrix" in frame and len(frame["transform_matrix"]) > 0:
-        #             poses.append(np.array(frame["transform_matrix"]))
-            
-        #     if not poses:
-        #         # 유효한 포즈가 없으면 빈 배열 반환
-        #         return []
         with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
             test_meta = json.load(f)
         
@@ -107,7 +133,7 @@ class Diva360_dataset(Dataset):
         # breakpoint()
         
         # 나선형 카메라 경로 생성
-        N_views = 120  # 비디오용 뷰 개수
+        N_views = 300  # 비디오용 뷰 개수
         val_poses = get_spiral(poses, np.array([[0.1, 100.0]]), N_views=N_views)
         
         # 카메라 생성
@@ -140,7 +166,8 @@ class Diva360_dataset(Dataset):
         return len(self.image_paths)
     
     def __getitem__(self, index):
-        img = Image.open(self.image_paths[index])
+        img = Image.open(self.image_paths[index])#.convert("RGB")
+        # breakpoint()
         img = self.transform(img)
         return img, self.image_poses[index], self.image_times[index]
     

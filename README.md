@@ -44,8 +44,8 @@ Please follow the [3D-GS](https://github.com/graphdeco-inria/gaussian-splatting)
 git clone https://github.com/hustvl/4DGaussians
 cd 4DGaussians
 git submodule update --init --recursive
-conda create -n Gaussians4D python=3.7 
-conda activate Gaussians4D
+conda create -n 4DGS python=3.7 
+conda activate 4DGS
 
 pip install -r requirements.txt
 pip install -e submodules/depth-diff-gaussian-rasterization
@@ -54,7 +54,7 @@ pip install -e submodules/simple-knn
 
 In our environment, we use pytorch=1.13.1+cu116.
 
-## Data Preparation
+<!-- ## Data Preparation
 
 **For synthetic scenes:**
 The dataset provided in [D-NeRF](https://github.com/albertpumarola/D-NeRF) is used. You can download the dataset from [dropbox](https://www.dropbox.com/s/0bf6fl0ye2vz3vr/data.zip?dl=0).
@@ -132,12 +132,12 @@ You need to ensure that the data folder is organized as follows after running mu
 │     		  ├── ...
 │   	  | points3D_multipleview.ply
 │   	  | poses_bounds_multipleview.npy
-```
+``` -->
 
 
 ## Training
 
-For training synthetic scenes such as `bouncingballs`, run
+<!-- For training synthetic scenes such as `bouncingballs`, run
 
 ```
 python train.py -s data/dnerf/bouncingballs --port 6017 --expname "dnerf/bouncingballs" --configs arguments/dnerf/bouncingballs.py 
@@ -179,7 +179,14 @@ pip install nerfstudio
 ns-process-data images --data data/your-data --output-dir data/your-ns-data
 cp -r data/your-ns-data/images data/your-ns-data/colmap/images
 python train.py -s data/your-ns-data/colmap --port 6017 --expname "custom" --configs arguments/hypernerf/default.py 
+``` -->
+
+For training **Diva360** Dataset, run
+```bash
+python train.py -s data/Diva360/battery --port 6017 --expname "Diva360/battery" --configs arguments/Diva360/battery.py 
 ```
+or use `default.py` for configs.
+
 You can customize your training config through the config files.
 
 ## Checkpoint

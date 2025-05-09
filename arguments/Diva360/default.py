@@ -15,9 +15,7 @@ ModelHiddenParams = dict(
     no_dshs=False,
     no_ds=False,
     empty_voxel=False,
-    render_process=False,
     static_mlp=False
-
 )
 OptimizationParams = dict(
     dataloader=True,
@@ -32,4 +30,5 @@ OptimizationParams = dict(
     # pruning_interval = 2000
 )
 ModelParams = dict(
-    white_background=False)
+    white_background=False,
+    render_process=False)

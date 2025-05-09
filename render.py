@@ -58,10 +58,13 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         
         rendering = render(view, gaussians, pipeline, background,cam_type=cam_type)["render"]
         render_images.append(to8b(rendering).transpose(1,2,0))
+        
+        # breakpoint()
+        
         render_list.append(rendering)
-        if name in ["train", "test"]:
+        if name in ["train", "test"]: # gt 추가는 문제 X
             if cam_type != "PanopticSports":
-                gt = view.original_image[0:3, :, :]
+                gt = view.original_image[0:3, :, :] # RGB
             else:
                 gt  = view['image'].cuda()
             gt_list.append(gt)
@@ -87,7 +90,11 @@ def render_sets(dataset : ModelParams, hyperparam, iteration : int, pipeline : P
             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background,cam_type)
 
         if not skip_test:
+            # breakpoint()
             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background,cam_type)
+            # test_cameras = scene.getTestCameras()
+            # new_cameras = [test_cameras[i] for i in range(100)] # every other camera
+            # render_set(dataset.model_path, "test", scene.loaded_iter, new_cameras, gaussians, pipeline, background,cam_type) # for test
         if not skip_video:
             render_set(dataset.model_path,"video",scene.loaded_iter,scene.getVideoCameras(),gaussians,pipeline,background,cam_type)
 if __name__ == "__main__":

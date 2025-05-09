@@ -8,3 +8,6 @@ ModelHiddenParams = dict(
      'resolution': [64, 64, 64, 75]
     }
 )
+
+ModelParams = dict(
+    render_process=False)

@@ -310,66 +310,6 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             
     return cam_infos
 
-# def generateCameras_Diva360(path, template_transformsfile, extension, maxtime):
-#     trans_t = lambda t : torch.Tensor([
-#     [1,0,0,0],
-#     [0,1,0,0],
-#     [0,0,1,t],
-#     [0,0,0,1]]).float()
-
-#     rot_phi = lambda phi : torch.Tensor([
-#         [1,0,0,0],
-#         [0,np.cos(phi),-np.sin(phi),0],
-#         [0,np.sin(phi), np.cos(phi),0],
-#         [0,0,0,1]]).float()
-
-#     rot_theta = lambda th : torch.Tensor([
-#         [np.cos(th),0,-np.sin(th),0],
-#         [0,1,0,0],
-#         [np.sin(th),0, np.cos(th),0],
-#         [0,0,0,1]]).float()
-#     def pose_spherical(theta, phi, radius):
-#         c2w = trans_t(radius)
-#         c2w = rot_phi(phi/180.*np.pi) @ c2w
-#         c2w = rot_theta(theta/180.*np.pi) @ c2w
-#         c2w = torch.Tensor(np.array([[-1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]])) @ c2w
-#         return c2w
-#     cam_infos = []
-#     # generate render poses and times
-#     render_poses = torch.stack([pose_spherical(angle, -30.0, 4.0) for angle in np.linspace(-180,180,160+1)[:-1]], 0)
-#     render_times = torch.linspace(0,maxtime,render_poses.shape[0])
-#     with open(os.path.join(path, template_transformsfile)) as json_file:
-#         template_json = json.load(json_file)
-#         try:
-#             fovx = template_json["camera_angle_x"]
-#         except:
-#             fovx = focal2fov(template_json["fl_x"], template_json['w'])
-#     # print("hello!!!!")
-#     # breakpoint()
-#     # load a single image to get image info.
-#     for idx, frame in enumerate(template_json["frames"]):
-#         cam_name = os.path.join(path, frame["file_path"] + extension)
-#         image_path = os.path.join(path, cam_name)
-#         image_name = Path(cam_name).stem
-#         image = Image.open(image_path)
-#         im_data = np.array(image.convert("RGBA"))
-#         image = PILtoTorch(image,(800,800))
-#         break
-#     # format information
-#     for idx, (time, poses) in enumerate(zip(render_times,render_poses)):
-#         time = time/maxtime
-#         matrix = np.linalg.inv(np.array(poses))
-#         R = -np.transpose(matrix[:3,:3])
-#         R[:,0] = -R[:,0]
-#         T = -matrix[:3, 3]
-#         fovy = focal2fov(fov2focal(fovx, image.shape[1]), image.shape[2])
-#         FovY = fovy 
-#         FovX = fovx
-#         cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-#                             image_path=None, image_name=None, width=image.shape[1], height=image.shape[2],
-#                             time = time, mask=None))
-#     return cam_infos
-
 def read_timeline(path):
     with open(os.path.join(path, "transforms_train.json")) as json_file:
         train_json = json.load(json_file)
@@ -432,7 +372,7 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
 def format_infos(dataset,split):
     # loading
     cameras = []
-    image = dataset[0][0] ## image : [C,W,H]
+    image = dataset[0][0] ## image : [C,H,W]
     if split == "train":
         for idx in tqdm(range(len(dataset))):
             image_path = None
@@ -770,14 +710,27 @@ def readDiva360infos(datadir, white_background=False):
 
     # 랜덤 포인트 클라우드 생성
     ply_path = os.path.join(datadir, "points3D_diva360.ply")
-    
+
+    # if os.path.exists(ply_path): # rendering
+    #     pcd = fetchPly(ply_path)
+    # else:
+    #     # Since this data set has no colmap data, we start with random points
+    #     num_pts = 2000
+    #     print(f"Generating random point cloud ({num_pts})...")
+
+    #     # We create random points inside the bounds of the synthetic Blender scenes
+    #     xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+    #     shs = np.random.random((num_pts, 3)) / 255.0
+    #     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
     # Since this data set has no colmap data, we start with random points
-    num_pts = 2000
+    num_pts = 5000
     print(f"Generating random point cloud ({num_pts})...")
 
-    # We create random points inside the bounds of the synthetic Blender scenes
-    xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+    # We create random points inside the bounds of Diva360 (aabb=4)
+    xyz = np.random.random((num_pts, 3)) * 6.5 - 3.25 ## -3.25 ~ 3.25
     shs = np.random.random((num_pts, 3)) / 255.0
+    # colors = np.ones((num_pts, 3)) ## TODO: check
+    
     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
 
     # SceneInfo 생성 및 반환
