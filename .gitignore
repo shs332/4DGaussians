@@ -8,11 +8,9 @@ tensorboard_3d
 screenshots
 data/
 data
-# submodules/
+submodules/
 **data**
 **/*.png
 multipleviewdata_temp/**/*.png
 test
 wandb
-submodules/simple-knn/
-submodules/depth-diff_gaussian_rasterization/
