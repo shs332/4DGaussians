@@ -60,7 +60,7 @@ class Diva360_dataset(Dataset):
         self.transform = T.ToTensor()
         
         # 이미지 경로, 포즈, 시간 로드
-        self.image_paths, self.image_poses, self.image_times = self.load_images_path(cam_folder, None, None, split)
+        self.image_paths, self.image_poses, self.image_times, self.cxs, self.cys = self.load_images_path(cam_folder, None, None, split)
 
         # 비디오 카메라 정보 초기화
         if split == "test":
@@ -76,12 +76,15 @@ class Diva360_dataset(Dataset):
         image_paths = []
         image_poses = []
         image_times = []
+        cx_px = []
+        cy_px = []
 
         image_length = len(os.listdir(os.path.join(cam_folder, "cam00"))) # change cam__ if dir does not exist
         for i, frame in enumerate(meta["frames"]): ## every element in "frames"            
             # transform_matrix에서 카메라 포즈 가져오기, Blender/OpenGL c2w
             c2w = np.array(frame["transform_matrix"])
-
+            cx = frame["cx"]
+            cy = frame["cy"]
             # qvec, T_1 = diva360_to_colmap(c2w) # COLMAP 좌표계로 변환
             # R = qvec2rotmat(qvec) # 회전 행렬로 변환
             # R_1 = R.transpose()
@@ -114,9 +117,11 @@ class Diva360_dataset(Dataset):
                 image_paths.append(image_path)
                 image_poses.append((R, T))
                 image_times.append(float((frame_idx+1)/image_length))
+                cx_px.append(cx)
+                cy_px.append(cy)
             # breakpoint()
         # breakpoint()
-        return image_paths, image_poses, image_times
+        return image_paths, image_poses, image_times, cx_px, cy_px
     
     def get_video_cam_infos(self, datadir):
         with open(os.path.join(datadir, "transforms_test.json"), "r") as f:
@@ -169,7 +174,10 @@ class Diva360_dataset(Dataset):
         img = Image.open(self.image_paths[index])#.convert("RGB")
         # breakpoint()
         img = self.transform(img)
-        return img, self.image_poses[index], self.image_times[index]
+        image_width = img.shape[2]
+        image_height = img.shape[1]
+        
+        return img, self.image_poses[index], self.image_times[index], self.cxs[index], self.cys[index], image_width, image_height
     
     def load_pose(self, index):
         return self.image_poses[index]

@@ -705,24 +705,13 @@ def readDiva360infos(datadir, white_background=False):
     
     # Normalization 계산
     nerf_normalization = getNerfppNorm(train_cam_infos_)
-
+    print("\nScene radius: ", nerf_normalization["radius"])
+    print("Scene translation: ", nerf_normalization["translate"], "\n")
     # breakpoint()
 
     # 랜덤 포인트 클라우드 생성
     ply_path = os.path.join(datadir, "points3D_diva360.ply")
 
-    # if os.path.exists(ply_path): # rendering
-    #     pcd = fetchPly(ply_path)
-    # else:
-    #     # Since this data set has no colmap data, we start with random points
-    #     num_pts = 2000
-    #     print(f"Generating random point cloud ({num_pts})...")
-
-    #     # We create random points inside the bounds of the synthetic Blender scenes
-    #     xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
-    #     shs = np.random.random((num_pts, 3)) / 255.0
-    #     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
-    # Since this data set has no colmap data, we start with random points
     num_pts = 5000
     print(f"Generating random point cloud ({num_pts})...")
 

@@ -42,6 +42,7 @@ except ImportError:
 def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations, 
                          checkpoint_iterations, checkpoint, debug_from,
                          gaussians, scene, stage, tb_writer, train_iter,timer):
+    from jhutil import color_log; color_log(1111, )
     first_iter = 0
     # coarse/fine 단계에 따라 log step 오프셋 결정
     step_offset = 0 if stage == "coarse" else opt.coarse_iterations
@@ -229,23 +230,25 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         #     loss += opt.lambda_lpips * lpipsloss
         
         # breakpoint()
-        if iteration % 10 == 9:  
-            wandb_dict[f"{stage}_loss"] = loss.item()
-            wandb_dict[f"{stage}_L1_loss"] = Ll1.item()
-            # wandb_dict[f"{stage}_ssim_loss"] = ssim_loss if type(ssim_loss)==int else ssim_loss.item() # int type
-            # wandb_dict[f"{stage}_tv_loss"] = tv_loss.item() if tv_loss is not None else 0
-            wandb_dict[f"{stage}_psnr"] = psnr_.item()
-            wandb_dict[f"{stage}_#points"] = gaussians.get_xyz.shape[0]
-            test_rend = render_wandb_image(scene, gaussians, [test_cams[iteration%len(test_cams)]], render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
-            train_rend = render_wandb_image(scene, gaussians, [train_cams[iteration%len(train_cams)]], render, pipe, background, stage+"train", iteration,timer.get_elapsed_time(),scene.dataset_type)
-            wandb_dict[f"{stage}_test_[GT-Render-Depth]"] = wandb.Image(test_rend, caption=f"iter {iteration}")
-            wandb_dict[f"{stage}_train_[GT-Render-Depth[]"] = wandb.Image(train_rend, caption=f"iter {iteration}")
-            # breakpoint()
-            wandb.log(wandb_dict, step=iteration+step_offset)
-            # image_np = image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
-            # gt_np = gt_image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
-            # image_np = np.concatenate((gt_np, image_np), axis=1)
-            # comparison = (np.clip(image_np,0,1) * 255).astype('uint8')
+        if (iteration < 500 and iteration % 10 == 9) \
+            or (iteration < 3000 and iteration % 50 == 49) \
+                or (iteration < 60000 and iteration %  100 == 99) :
+                wandb_dict[f"{stage}_loss"] = loss.item()
+                wandb_dict[f"{stage}_L1_loss"] = Ll1.item()
+                # wandb_dict[f"{stage}_ssim_loss"] = ssim_loss if type(ssim_loss)==int else ssim_loss.item() # int type
+                # wandb_dict[f"{stage}_tv_loss"] = tv_loss.item() if tv_loss is not None else 0
+                wandb_dict[f"{stage}_psnr"] = psnr_.item()
+                wandb_dict[f"{stage}_#points"] = gaussians.get_xyz.shape[0]
+                test_rend = render_wandb_image(scene, gaussians, [test_cams[iteration%len(test_cams)]], render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                train_rend = render_wandb_image(scene, gaussians, [train_cams[iteration%len(train_cams)]], render, pipe, background, stage+"train", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                wandb_dict[f"{stage}_test_[GT-Render-Depth]"] = wandb.Image(test_rend, caption=f"iter {iteration}")
+                wandb_dict[f"{stage}_train_[GT-Render-Depth[]"] = wandb.Image(train_rend, caption=f"iter {iteration}")
+                # breakpoint()
+                wandb.log(wandb_dict, step=iteration+step_offset)
+                # image_np = image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
+                # gt_np = gt_image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
+                # image_np = np.concatenate((gt_np, image_np), axis=1)
+                # comparison = (np.clip(image_np,0,1) * 255).astype('uint8')
             
         loss.backward()
         if torch.isnan(loss).any():

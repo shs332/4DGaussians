@@ -21,7 +21,7 @@ class FourDGSdataset(Dataset):
 
         if self.dataset_type != "PanopticSports":
             try: # try to load the image from the dataset, diva360/DFA this case
-                image, w2c, time = self.dataset[index]
+                image, w2c, time, cx_px, cy_px, image_width, image_height = self.dataset[index]
                 R,T = w2c
                 FovX = focal2fov(self.dataset.focal[0], image.shape[2])
                 FovY = focal2fov(self.dataset.focal[0], image.shape[1]) # use same focal length for both axes
@@ -34,11 +34,10 @@ class FourDGSdataset(Dataset):
                 FovX = caminfo.FovX
                 FovY = caminfo.FovY
                 time = caminfo.time
-    
                 mask = caminfo.mask
             return Camera(colmap_id=index,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,gt_alpha_mask=None,
-                              image_name=f"{index}",uid=index,data_device=torch.device("cuda"),time=time,
-                              mask=mask)
+                              image_name=f"{index}",uid=index,data_device=torch.device("cuda"),time=time, mask=mask,
+                              cx_px=cx_px, cy_px=cy_px, image_width=image_width, image_height=image_height)
         else:
             return self.dataset[index]
     def __len__(self):
