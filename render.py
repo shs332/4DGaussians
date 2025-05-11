@@ -63,7 +63,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         
         render_list.append(rendering)
         if name in ["train", "test"]: # gt 추가는 문제 X
-            if cam_type != "PanopticSports":
+            if cam_type not in  ["PanopticSports", "Diva360"]:
                 gt = view.original_image[0:3, :, :] # RGB
             else:
                 gt  = view['image'].cuda()

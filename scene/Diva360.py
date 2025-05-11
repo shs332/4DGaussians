@@ -38,7 +38,6 @@ def qvec2rotmat(qvec):
         2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
         1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]])
 
-### TODO: implement based on multipleview_dataset.py ###
 class Diva360_dataset(Dataset):
     def __init__(
         self,
@@ -82,9 +81,9 @@ class Diva360_dataset(Dataset):
             # transform_matrix에서 카메라 포즈 가져오기, Blender/OpenGL c2w
             c2w = np.array(frame["transform_matrix"])
 
-            # qvec, T_1 = diva360_to_colmap(c2w) # COLMAP 좌표계로 변환
+            # qvec, T = diva360_to_colmap(c2w) # COLMAP 좌표계로 변환
             # R = qvec2rotmat(qvec) # 회전 행렬로 변환
-            # R_1 = R.transpose()
+            # R = R.transpose()
             
             # w2c = np.linalg.inv(c2w)
             # R = -np.transpose(w2c[:3,:3])

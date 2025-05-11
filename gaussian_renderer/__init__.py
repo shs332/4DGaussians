@@ -32,7 +32,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     # Set up rasterization configuration
     
     means3D = pc.get_xyz
-    if cam_type != "PanopticSports":
+    if cam_type not in  ["PanopticSports", "Diva360"]:
         tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
         tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
         raster_settings = GaussianRasterizationSettings(

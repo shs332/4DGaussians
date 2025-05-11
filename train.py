@@ -190,7 +190,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage,cam_type=scene.dataset_type)
             image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
             images.append(image.unsqueeze(0))
-            if scene.dataset_type!="PanopticSports":
+            if scene.dataset_type not in ["PanopticSports", "Diva360"]:
                 gt_image = viewpoint_cam.original_image.cuda()
             else:
                 gt_image  = viewpoint_cam['image'].cuda()
@@ -342,7 +342,7 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
     wandb.init(
         project=f"4DGS_{scene.dataset_type}",
         name=f"{object_name}",
-        group="debug",
+        group="testing",
         config={
             "Modelparams": vars(dataset),
             "ModelHiddenParams": vars(hyper),
@@ -401,7 +401,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config['cameras']):
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians,stage=stage, cam_type=dataset_type, *renderArgs)["render"], 0.0, 1.0)
-                    if dataset_type == "PanopticSports":
+                    if dataset_type in ["PanopticSports", "Diva360"]:
                         gt_image = torch.clamp(viewpoint["image"].to("cuda"), 0.0, 1.0)
                     else:
                         gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)

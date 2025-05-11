@@ -19,8 +19,8 @@ class FourDGSdataset(Dataset):
     def __getitem__(self, index):
         # breakpoint()
 
-        if self.dataset_type != "PanopticSports":
-            try: # try to load the image from the dataset, diva360/DFA this case
+        if self.dataset_type not in ["PanopticSports", "Diva360"]:
+            try: # try to load the image from the dataset
                 image, w2c, time = self.dataset[index]
                 R,T = w2c
                 FovX = focal2fov(self.dataset.focal[0], image.shape[2])

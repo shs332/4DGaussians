@@ -525,7 +525,7 @@ def readdynerfInfo(datadir,use_bg_points,eval):
                            )
     return scene_info
 
-def setup_camera(w, h, k, w2c, near=0.01, far=100):
+def setup_camera(w, h, k, w2c, near=0.01, far=100): ### TODO: diva360 based on it, w2c : [4,4]
     from diff_gaussian_rasterization import GaussianRasterizationSettings as Camera
     fx, fy, cx, cy = k[0][0], k[1][1], k[0][2], k[1][2]
     w2c = torch.tensor(w2c).cuda().float()
@@ -548,7 +548,7 @@ def setup_camera(w, h, k, w2c, near=0.01, far=100):
         sh_degree=0,
         campos=cam_center,
         prefiltered=False,
-        debug=True
+        debug=False 
     )
     return cam
 def plot_camera_orientations(cam_list, xyz):
@@ -578,20 +578,33 @@ def plot_camera_orientations(cam_list, xyz):
     plt.savefig("output.png")
     # breakpoint()
 def readPanopticmeta(datadir, json_path):
+    """
+    PanopticSports/
+    └── ims/
+        ├── cam00/
+        │   ├── 00000000.jpg
+        │   ├── 00000001.jpg
+        │   └── ...
+        ├── cam01/
+        │   ├── 00000000.jpg
+        │   ├── 00000001.jpg
+        │   └── ...
+        └── ...
+    """
     with open(os.path.join(datadir,json_path)) as f:
         test_meta = json.load(f)
     w = test_meta['w']
     h = test_meta['h']
     max_time = len(test_meta['fn'])
     cam_infos = []
-    for index in range(len(test_meta['fn'])):
+    for index in range(len(test_meta['fn'])): ## for each frame
         focals = test_meta['k'][index]
         w2cs = test_meta['w2c'][index]
         fns = test_meta['fn'][index]
         cam_ids = test_meta['cam_id'][index]
 
         time = index / len(test_meta['fn'])
-        for focal, w2c, fn, cam in zip(focals, w2cs, fns, cam_ids):
+        for focal, w2c, fn, cam in zip(focals, w2cs, fns, cam_ids): ## for each camera
             image_path = os.path.join(datadir,"ims")
             image_name=fn
             image = Image.open(os.path.join(datadir,"ims",fn))
@@ -682,7 +695,126 @@ def readMultipleViewinfos(datadir,llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
+def readDiva360json(datadir, json_path):
+    with open(os.path.join(datadir,json_path)) as f:
+        meta = json.load(f)
+        
+    frames = meta['frames']
+    w = frames[0]['w']
+    h = frames[0]['h']
+    max_time = len(os.listdir(os.path.join(datadir, "cam00")))
+    cam_infos = []
+    
+    # 각 카메라 정보와 해당 카메라의 모든 프레임에 대한 정보 생성
+    total_iterations = len(frames) * max_time
+    with tqdm(total=total_iterations, desc="Processing frames") as pbar:
+        for frame in frames:
+            # 카메라 내부 파라미터
+            cx = frame['cx']
+            cy = frame['cy']
+            fl_x = frame['fl_x']
+            fl_y = frame['fl_y']
+            w = frame['w']
+            h = frame['h']
+            K = np.array([[fl_x, 0, cx],
+                    [0, fl_y, cy],
+                    [0, 0, 1]])
+            
+            # 변환 행렬 (카메라 외부 파라미터)
+            c2w = np.array(frame['transform_matrix'])  # OpenGL c2w
+            w2c = np.linalg.inv(c2w)
+            
+            # 카메라 폴더 이름 (cam01, cam02, ...)
+            file_path = frame['file_path']
+            cam_num = os.path.dirname(file_path)
+            images_folder = os.path.join(datadir, cam_num) # .../cam01
 
+            camera = setup_camera(w, h, K, w2c)
+
+            for frame_idx in range(max_time): # for each image
+                image_path = os.path.join(images_folder, f"frame_{str(frame_idx).zfill(5)}.png") # start from frame_00000.png 
+                time = (frame_idx+1) / max_time # last image = 1.0
+
+                # breakpoint()
+                
+                image = Image.open(image_path)
+                im_data = np.array(image.convert("RGBA"))
+                im_data = PILtoTorch(im_data,None)[:3,:,:]
+                cam_infos.append({
+                    "camera":camera,
+                    "time":time,
+                    "image":im_data})
+                
+                pbar.update(1)
+                
+        pbar.close()
+            
+    # scene_radius 계산을 위한 카메라 센터 추출 - transform_matrix는 이미 c2w이므로 역행렬 필요 없음
+    if len(frames) > 0:
+        # 카메라 중심 위치는 c2w 행렬의 마지막 열에서 바로 추출
+        cam_centers = [np.array(frames[0]['transform_matrix'])[:3, 3]]
+        
+        for camera in frames[1:]:
+            c2w = np.array(camera['transform_matrix'])
+            cam_centers.append(c2w[:3, 3])
+
+        breakpoint()
+        cam_centers = np.array(cam_centers)
+        center_mean = np.mean(cam_centers, axis=0)
+        translate = -center_mean
+        scene_radius = 1.1 * np.max(np.linalg.norm(cam_centers - center_mean[None], axis=-1))
+    else:
+        scene_radius = 4.0  # 기본값
+    
+    return cam_infos, max_time, scene_radius, translate
+    
+def readDiva360infos_revised(datadir, white_background=False, use_cache=True):
+    # 캐시 파일 경로
+    cache_file = os.path.join(datadir, "scene_info_cache_nodebug.pkl")
+    # breakpoint()
+    # 캐시 파일이 존재하고 사용하도록 설정된 경우
+    # if os.path.exists(cache_file) and use_cache:
+    #     print(f"캐시된 장면 정보 로드 중: {cache_file}")
+    #     import pickle
+    #     with open(cache_file, 'rb') as f:
+    #         return pickle.load(f)
+        
+    train_cam_infos, max_time, scene_radius, translate = readDiva360json(datadir, "transforms_train.json")
+    test_cam_infos, _, _, _ = readDiva360json(datadir, "transforms_test.json")
+    nerf_normalization = {
+        "radius":scene_radius,
+        "translate":translate
+    }
+
+    # 랜덤 포인트 클라우드 생성
+    ply_path = os.path.join(datadir, "points3D_diva360.ply")
+    num_pts = 5000
+    print(f"Generating random point cloud ({num_pts})...")
+
+    # We create random points inside the bounds of Diva360 (aabb=4)
+    xyz = np.random.random((num_pts, 3)) * 6.5 - 3.25 ## -3.25 ~ 3.25
+    shs = np.random.random((num_pts, 3)) / 255.0
+    # colors = np.ones((num_pts, 3))
+    
+    pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+    # breakpoint()
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           video_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path,
+                           maxtime=max_time,
+                           )
+    # 결과를 캐시에 저장
+    
+    # if use_cache:
+    #     print(f"장면 정보를 캐시에 저장 중: {cache_file}")
+    #     import pickle
+    #     with open(cache_file, 'wb') as f:
+    #         pickle.dump(scene_info, f)
+    return scene_info
+    
 def readDiva360infos(datadir, white_background=False): 
     ### TODO: implement this function ### 
     # with open(os.path.join(datadir, "transforms_train.json"), "r") as f:
@@ -710,20 +842,7 @@ def readDiva360infos(datadir, white_background=False):
 
     # 랜덤 포인트 클라우드 생성
     ply_path = os.path.join(datadir, "points3D_diva360.ply")
-
-    # if os.path.exists(ply_path): # rendering
-    #     pcd = fetchPly(ply_path)
-    # else:
-    #     # Since this data set has no colmap data, we start with random points
-    #     num_pts = 2000
-    #     print(f"Generating random point cloud ({num_pts})...")
-
-    #     # We create random points inside the bounds of the synthetic Blender scenes
-    #     xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
-    #     shs = np.random.random((num_pts, 3)) / 255.0
-    #     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
-    # Since this data set has no colmap data, we start with random points
-    num_pts = 5000
+    num_pts = 10000
     print(f"Generating random point cloud ({num_pts})...")
 
     # We create random points inside the bounds of Diva360 (aabb=4)
@@ -756,6 +875,6 @@ sceneLoadTypeCallbacks = {
     "nerfies": readHyperDataInfos,  # NeRFies & HyperNeRF dataset proposed by [https://github.com/google/hypernerf/releases/tag/v0.1]
     "PanopticSports" : readPanopticSportsinfos,
     "MultipleView": readMultipleViewinfos,
-    "Diva360" : readDiva360infos,
+    "Diva360" : readDiva360infos_revised,
     "DFA" : readDFAinfos
 }

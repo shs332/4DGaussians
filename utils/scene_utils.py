@@ -21,7 +21,7 @@ def render_training_image(scene, gaussians, viewpoints, render_func, pipe, backg
         label2 = "time:%.2f" % times + end
         image = render_pkg["render"]
         depth = render_pkg["depth"]
-        if dataset_type == "PanopticSports":
+        if dataset_type in ["PanopticSports", "Diva360"]:
             gt_np = viewpoint['image'].permute(1,2,0).cpu().numpy()
         else:
             gt_np = viewpoint.original_image.permute(1,2,0).cpu().numpy()
@@ -80,7 +80,7 @@ def render_wandb_image(scene, gaussians, viewpoints, render_func, pipe, backgrou
         label2 = "time:%.2f" % times + end
         image = render_pkg["render"]
         depth = render_pkg["depth"]
-        if dataset_type == "PanopticSports":
+        if dataset_type in ["PanopticSports", "Diva360"]:
             gt_np = viewpoint['image'].permute(1,2,0).cpu().numpy()
         else:
             gt_np = viewpoint.original_image.permute(1,2,0).cpu().numpy()
