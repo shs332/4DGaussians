@@ -6,6 +6,7 @@ from utils.graphics_utils import fov2focal, focal2fov
 import torch
 from utils.camera_utils import loadCam
 from utils.graphics_utils import focal2fov
+from PIL import Image
 class FourDGSdataset(Dataset):
     def __init__(
         self,
@@ -39,6 +40,13 @@ class FourDGSdataset(Dataset):
             return Camera(colmap_id=index,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,gt_alpha_mask=None,
                               image_name=f"{index}",uid=index,data_device=torch.device("cuda"),time=time,
                               mask=mask)
+        elif self.dataset_type == "Diva360":
+            cam_info_dict = self.dataset[index]
+            # image_path = cam_info_dict["image_path"]
+            # image = Image.open(image_path)
+            # image = PILtoTorch(image, None)[:3,:,:] # do not resize
+            # cam_info_dict["image"] = image
+            return cam_info_dict
         else:
             return self.dataset[index]
     def __len__(self):

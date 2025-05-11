@@ -31,6 +31,8 @@ from utils.scene_utils import render_training_image, render_wandb_image
 from time import time
 import copy
 import wandb
+from PIL import Image
+from utils.general_utils import PILtoTorch
 
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
@@ -96,8 +98,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,sampler=sampler,num_workers=16,collate_fn=list)
             random_loader = False
         else:
-            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,shuffle=True,num_workers=16,collate_fn=list)
+            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,shuffle=True,num_workers=0,collate_fn=list)
             random_loader = True
+        # breakpoint()
         loader = iter(viewpoint_stack_loader)
     
     
@@ -154,6 +157,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # dynerf's branch
         if opt.dataloader and not load_in_memory:
             try:
+                # breakpoint()
                 viewpoint_cams = next(loader)
             except StopIteration:
                 print("reset dataloader into random dataloader.")
@@ -192,9 +196,12 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             images.append(image.unsqueeze(0))
             if scene.dataset_type not in ["PanopticSports", "Diva360"]:
                 gt_image = viewpoint_cam.original_image.cuda()
+            elif scene.dataset_type == "Diva360":
+                gt_image = Image.open(viewpoint_cam['image_path'])
+                gt_image = PILtoTorch(gt_image, None)[:3,:,:].cuda()
             else:
                 gt_image  = viewpoint_cam['image'].cuda()
-            
+
             gt_images.append(gt_image.unsqueeze(0))
             radii_list.append(radii.unsqueeze(0))
             visibility_filter_list.append(visibility_filter.unsqueeze(0))
@@ -402,7 +409,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 for idx, viewpoint in enumerate(config['cameras']):
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians,stage=stage, cam_type=dataset_type, *renderArgs)["render"], 0.0, 1.0)
                     if dataset_type in ["PanopticSports", "Diva360"]:
-                        gt_image = torch.clamp(viewpoint["image"].to("cuda"), 0.0, 1.0)
+                        gt_image = Image.open(viewpoint['image_path'])
+                        gt_image = torch.clamp(gt_image).to("cuda"), 0.0, 1.0)
                     else:
                         gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
                     try:

@@ -695,6 +695,8 @@ def readMultipleViewinfos(datadir,llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
+
+from torchvision import transforms
 def readDiva360json(datadir, json_path):
     with open(os.path.join(datadir,json_path)) as f:
         meta = json.load(f)
@@ -704,6 +706,7 @@ def readDiva360json(datadir, json_path):
     h = frames[0]['h']
     max_time = len(os.listdir(os.path.join(datadir, "cam00")))
     cam_infos = []
+    transform = transforms.ToTensor()
     
     # 각 카메라 정보와 해당 카메라의 모든 프레임에 대한 정보 생성
     total_iterations = len(frames) * max_time
@@ -736,17 +739,15 @@ def readDiva360json(datadir, json_path):
                 time = (frame_idx+1) / max_time # last image = 1.0
 
                 # breakpoint()
+                # image = Image.open(image_path)
+                # im_data = transform(image)
                 
-                image = Image.open(image_path)
-                im_data = np.array(image.convert("RGBA"))
-                im_data = PILtoTorch(im_data,None)[:3,:,:]
                 cam_infos.append({
                     "camera":camera,
                     "time":time,
-                    "image":im_data})
-                
+                    "image_path":image_path,
+                    "image" : None}) ## added in dataset.py
                 pbar.update(1)
-                
         pbar.close()
             
     # scene_radius 계산을 위한 카메라 센터 추출 - transform_matrix는 이미 c2w이므로 역행렬 필요 없음
@@ -758,7 +759,6 @@ def readDiva360json(datadir, json_path):
             c2w = np.array(camera['transform_matrix'])
             cam_centers.append(c2w[:3, 3])
 
-        breakpoint()
         cam_centers = np.array(cam_centers)
         center_mean = np.mean(cam_centers, axis=0)
         translate = -center_mean

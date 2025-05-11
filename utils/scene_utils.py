@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 plt.rcParams['font.sans-serif'] = ['Times New Roman']
 
 import numpy as np
+from jhutil import load_img
 
 import copy
 @torch.no_grad()
@@ -80,10 +81,13 @@ def render_wandb_image(scene, gaussians, viewpoints, render_func, pipe, backgrou
         label2 = "time:%.2f" % times + end
         image = render_pkg["render"]
         depth = render_pkg["depth"]
-        if dataset_type in ["PanopticSports", "Diva360"]:
-            gt_np = viewpoint['image'].permute(1,2,0).cpu().numpy()
-        else:
-            gt_np = viewpoint.original_image.permute(1,2,0).cpu().numpy()
+
+        gt_np = load_img(viewpoint['image_path'])[:3].permute(1,2,0).cpu().numpy()
+        
+        # if dataset_type in ["PanopticSports", "Diva360"]:
+        #     gt_np = viewpoint['image_path'][:3,:,:].permute(1,2,0).cpu().numpy() ## TODO: make image with PIL
+        # else:
+        #     gt_np = viewpoint.original_image.permute(1,2,0).cpu().numpy()
         image_np = image.permute(1, 2, 0).cpu().numpy()  # (H, W, 3)
         depth_np = depth.permute(1, 2, 0).cpu().numpy()
         depth_np /= depth_np.max()
