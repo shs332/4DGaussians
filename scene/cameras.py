@@ -12,7 +12,7 @@
 import torch
 from torch import nn
 import numpy as np
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix, getProjectionMatrix_cx_cy
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix, getProjectionMatrixShift
 
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
@@ -63,16 +63,15 @@ class Camera(nn.Module):
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1)
         # .cuda()
         # self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1)
-        # breakpoint()
-        self.projection_matrix = getProjectionMatrix_cx_cy(
+        self.projection_matrix = getProjectionMatrixShift(
             znear=self.znear,
             zfar=self.zfar,
             fovX=self.FoVx,
             fovY=self.FoVy,
-            cx_px=cx_px,
-            cy_px=cy_px,
-            image_width=image_width,
-            image_height=image_height,
+            cx=cx_px,
+            cy=cy_px,
+            width=image_width,
+            height=image_height,
         ).transpose(0,1)
         # .cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)

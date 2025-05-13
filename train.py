@@ -230,7 +230,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         #     loss += opt.lambda_lpips * lpipsloss
         
         # breakpoint()
-        if (iteration < 500 and iteration % 10 == 9) \
+        if (iteration < 500 and iteration % 50 == 9) \
             or (iteration < 3000 and iteration % 50 == 49) \
                 or (iteration < 60000 and iteration %  100 == 99) :
                 wandb_dict[f"{stage}_loss"] = loss.item()

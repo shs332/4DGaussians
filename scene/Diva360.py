@@ -79,22 +79,13 @@ class Diva360_dataset(Dataset):
         cx_px = []
         cy_px = []
 
-        image_length = len(os.listdir(os.path.join(cam_folder, "cam00"))) # change cam__ if dir does not exist
+        # image_length = len(os.listdir(os.path.join(cam_folder, "cam00"))) # change cam__ if dir does not exist
+        image_length = 1
         for i, frame in enumerate(meta["frames"]): ## every element in "frames"            
             # transform_matrix에서 카메라 포즈 가져오기, Blender/OpenGL c2w
             c2w = np.array(frame["transform_matrix"])
             cx = frame["cx"]
             cy = frame["cy"]
-            # qvec, T_1 = diva360_to_colmap(c2w) # COLMAP 좌표계로 변환
-            # R = qvec2rotmat(qvec) # 회전 행렬로 변환
-            # R_1 = R.transpose()
-            
-            # w2c = np.linalg.inv(c2w)
-            # R = -np.transpose(w2c[:3,:3])
-            # R[:,0] = -R[:,0]
-            # T = -w2c[:3, 3]
-
-            # breakpoint()
 
             # OpenGL에서 COLMAP 좌표계로 변환
             c2w[:3, 1:3] *= -1
@@ -103,8 +94,6 @@ class Diva360_dataset(Dataset):
             w2c = np.linalg.inv(c2w)
             R = np.transpose(w2c[:3, :3])
             T = w2c[:3, 3]
-
-            # ### R, T 비교
             # breakpoint()
 
             file_path = frame["file_path"]
