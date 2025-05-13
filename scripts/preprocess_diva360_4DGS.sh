@@ -14,13 +14,13 @@ set -e
 OUTPUT_DIR="/data2/wlsgur4011/GESI/4DGaussians/data"
 SRC_ROOT="/data/rvi/dataset/Diva360_data/processed_data"
 
-mkdir -p "$OUTPUT_DIR/multipleview"
+mkdir -p "$OUTPUT_DIR/Diva360"
 
 for object_name in $(ls "$SRC_ROOT"); do
     echo -e "Processing object diva360: $object_name\n"
     
     OBJ_SRC="$SRC_ROOT/$object_name/frames_1"
-    OBJ_DST="$OUTPUT_DIR/multipleview/$object_name"
+    OBJ_DST="$OUTPUT_DIR/Diva360/$object_name"
     mkdir -p "$OBJ_DST"
     for cam_folder in $(ls "$OBJ_SRC"); do
         CAM_SRC="$OBJ_SRC/$cam_folder"
@@ -40,14 +40,22 @@ for object_name in $(ls "$SRC_ROOT"); do
     TRAIN_JSOND="$OBJ_DST/transforms_train.json"
     TEST_JSOND="$OBJ_DST/transforms_test.json"
     
+    MERGED_JSON="$OBJ_DST/transforms_merged.json"   
+
+    # echo $TRAIN_JSOND $TEST_JSOND $MERGED_JSON
     cp "$TRAIN_JSONS" "$TRAIN_JSOND"
     cp "$TEST_JSONS" "$TEST_JSOND"
     
-    # 먼저 undist/ 제거
+    # # 먼저 undist/ 제거
     sed -i 's|undist/||g' "$TRAIN_JSOND" "$TEST_JSOND"
     
     # 그 다음 파일명 패턴 변경 (000xxxxx.png -> frame_xxxxx.png)
     sed -i 's|/000\([0-9]\{5\}\.png\)|/frame_\1|g' "$TRAIN_JSOND" "$TEST_JSOND"
+
+    jq -s '{
+    frames: (.[0].frames + .[1].frames),
+    aabb_scale: .[0].aabb_scale
+    }' ${TRAIN_JSOND} ${TEST_JSOND} > ${MERGED_JSON}
 done
 
 echo "심볼릭 링크 생성 완료: $OUTPUT_DIR/multipleview"

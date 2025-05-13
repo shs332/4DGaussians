@@ -24,9 +24,14 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], load_coarse=False):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], load_coarse=False,
+                 idx_from=None, idx_to=None, cam_idx=None):
         """b
         :param path: Path to colmap scene main folder.
+        
+        idx_from : deform from
+        idx_to : deform to
+        cam_idx : camera index, where idx_to image is in it
         """
         self.model_path = args.model_path
         self.loaded_iter = None
@@ -46,7 +51,7 @@ class Scene:
         # breakpoint()
         if os.path.split(os.path.split(args.source_path)[0])[1] == "Diva360":
             print("Found Diva360 folder, assuming Diva360 data set!")
-            scene_info = sceneLoadTypeCallbacks["Diva360"](args.source_path, args.white_background)
+            scene_info = sceneLoadTypeCallbacks["Diva360"](args.source_path, idx_from, idx_to, cam_idx, args.white_background)
             dataset_type="Diva360"
         elif os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, args.llffhold)

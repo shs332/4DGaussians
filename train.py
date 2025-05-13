@@ -21,16 +21,19 @@ from utils.general_utils import safe_state
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
+from pytorch_msssim import ms_ssim
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams, ModelHiddenParams
 from torch.utils.data import DataLoader
 from utils.timer import Timer
 from utils.loader_utils import FineSampler, get_stamp_list
-import lpips
+# import lpips
+from lpipsPyTorch import lpips
 from utils.scene_utils import render_training_image, render_wandb_image
 from time import time
 import copy
 import wandb
+from torch.utils.data import Subset
 
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
@@ -41,7 +44,8 @@ except ImportError:
     TENSORBOARD_FOUND = False
 def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations, 
                          checkpoint_iterations, checkpoint, debug_from,
-                         gaussians, scene, stage, tb_writer, train_iter,timer):
+                         gaussians, scene, stage, tb_writer, train_iter,timer,
+                         is_gesi=False):
     from jhutil import color_log; color_log(1111, )
     first_iter = 0
     # coarse/fine 단계에 따라 log step 오프셋 결정
@@ -87,20 +91,22 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
     # 
     batch_size = opt.batch_size
     print("data loading done")
-    if opt.dataloader: # Diva360
+    if opt.dataloader or scene.dataset_type == "DFA": # Diva360
         viewpoint_stack = scene.getTrainCameras()
-        
-        # breakpoint()
-        
+        if is_gesi:
+            if stage == "coarse":
+                viewpoint_stack = Subset(viewpoint_stack, list(range(len(viewpoint_stack) - 1))) # reconstructing
+            elif stage == "fine":
+                viewpoint_stack = Subset(viewpoint_stack, [len(viewpoint_stack) - 1]) # last image
+                
         if opt.custom_sampler is not None:
             sampler = FineSampler(viewpoint_stack)
-            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,sampler=sampler,num_workers=16,collate_fn=list)
+            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,sampler=sampler,num_workers=4,collate_fn=list)
             random_loader = False
         else:
-            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,shuffle=True,num_workers=16,collate_fn=list)
+            viewpoint_stack_loader = DataLoader(viewpoint_stack, batch_size=batch_size,shuffle=True,num_workers=4,collate_fn=list)
             random_loader = True
         loader = iter(viewpoint_stack_loader)
-    
     
     # dynerf, zerostamp_init
     # breakpoint()
@@ -115,33 +121,32 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
     count = 0
     
     for iteration in range(first_iter, final_iter+1):        
-        if network_gui.conn == None:
-            network_gui.try_connect()
-        while network_gui.conn != None:
-            try:
-                net_image_bytes = None
-                custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
-                if custom_cam != None:
-                    count +=1
-                    viewpoint_index = (count ) % len(video_cams)
-                    if (count //(len(video_cams))) % 2 == 0:
-                        viewpoint_index = viewpoint_index
-                    else:
-                        viewpoint_index = len(video_cams) - viewpoint_index - 1
-                    # print(viewpoint_index)
-                    viewpoint = video_cams[viewpoint_index]
-                    custom_cam.time = viewpoint.time
-                    # print(custom_cam.time, viewpoint_index, count)
-                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer, stage=stage, cam_type=scene.dataset_type)["render"]
+        # if network_gui.conn == None:
+        #     network_gui.try_connect()
+        # while network_gui.conn != None:
+        #     try:
+        #         net_image_bytes = None
+        #         custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
+        #         if custom_cam != None:
+        #             count +=1
+        #             viewpoint_index = (count ) % len(video_cams)
+        #             if (count //(len(video_cams))) % 2 == 0:
+        #                 viewpoint_index = viewpoint_index
+        #             else:
+        #                 viewpoint_index = len(video_cams) - viewpoint_index - 1
+        #             # print(viewpoint_index)
+        #             viewpoint = video_cams[viewpoint_index]
+        #             custom_cam.time = viewpoint.time
+        #             # print(custom_cam.time, viewpoint_index, count)
+        #             net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer, stage=stage, cam_type=scene.dataset_type)["render"]
 
-                    net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
-                network_gui.send(net_image_bytes, dataset.source_path)
-                if do_training and ((iteration < int(opt.iterations)) or not keep_alive) :
-                    break
-            except Exception as e:
-                print(e)
-                network_gui.conn = None
-
+        #             net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+        #         network_gui.send(net_image_bytes, dataset.source_path)
+        #         if do_training and ((iteration < int(opt.iterations)) or not keep_alive) :
+        #             break
+        #     except Exception as e:
+        #         print(e)
+        #         network_gui.conn = None
         iter_start.record()
 
         gaussians.update_learning_rate(iteration)
@@ -153,7 +158,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # Pick a random Camera
 
         # dynerf's branch
-        if opt.dataloader and not load_in_memory:
+        if is_gesi and stage == "fine" and scene.dataset_type == "Diva360":
+            viewpoint_cams = [viewpoint_stack[-1]] # one image only for training
+        elif opt.dataloader and not load_in_memory:
             try:
                 viewpoint_cams = next(loader)
             except StopIteration:
@@ -168,7 +175,6 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             viewpoint_cams = []
 
             while idx < batch_size :    
-                    
                 viewpoint_cam = viewpoint_stack.pop(randint(0,len(viewpoint_stack)-1))
                 if not viewpoint_stack :
                     viewpoint_stack =  temp_list.copy()
@@ -186,6 +192,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         radii_list = []
         visibility_filter_list = []
         viewspace_point_tensor_list = []
+        # breakpoint()
         for viewpoint_cam in viewpoint_cams:
             # breakpoint()
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage,cam_type=scene.dataset_type)
@@ -212,7 +219,34 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         psnr_ = psnr(image_tensor, gt_image_tensor).mean().double()
         # norm
         # loss 로깅
+        # if stage == "fine" and scene.dataset_type in ["Diva360"]:
+        #     with torch.no_grad():
+        #         for viewpoint_cam in test_cams:
+        #             # breakpoint()
+        #             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage,cam_type=scene.dataset_type)
+        #             image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        #             images.append(image.unsqueeze(0))
+        #             # if scene.dataset_type!="PanopticSports":
+        #             #     gt_image = viewpoint_cam.original_image.cuda()
+        #             # else:
+        #             #     gt_image  = viewpoint_cam['image'].cuda()
+        #             gt_image = viewpoint_cam.original_image.cuda()
 
+        #             gt_images.append(gt_image.unsqueeze(0))
+        #             radii_list.append(radii.unsqueeze(0))
+        #             visibility_filter_list.append(visibility_filter.unsqueeze(0))
+        #             viewspace_point_tensor_list.append(viewspace_point_tensor)
+                
+
+        #         radii = torch.cat(radii_list,0).max(dim=0).values
+        #         visibility_filter = torch.cat(visibility_filter_list).any(dim=0)
+        #         image_tensor = torch.cat(images,0)
+        #         gt_image_tensor = torch.cat(gt_images,0)
+        #         # Loss
+        #         Ll1 = l1_loss(image_tensor, gt_image_tensor[:,:3,:,:])
+
+        #         psnr_ = psnr(image_tensor, gt_image_tensor).mean().double()
+            
         loss = Ll1
         wandb_dict = {}
         if stage == "fine" and hyper.time_smoothness_weight != 0:
@@ -228,34 +262,13 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # if opt.lambda_lpips !=0:
         #     lpipsloss = lpips_loss(image_tensor,gt_image_tensor,lpips_model)
         #     loss += opt.lambda_lpips * lpipsloss
-        
-        # breakpoint()
-        if (iteration < 500 and iteration % 50 == 9) \
-            or (iteration < 3000 and iteration % 50 == 49) \
-                or (iteration < 60000 and iteration %  100 == 99) :
-                wandb_dict[f"{stage}_loss"] = loss.item()
-                wandb_dict[f"{stage}_L1_loss"] = Ll1.item()
-                # wandb_dict[f"{stage}_ssim_loss"] = ssim_loss if type(ssim_loss)==int else ssim_loss.item() # int type
-                # wandb_dict[f"{stage}_tv_loss"] = tv_loss.item() if tv_loss is not None else 0
-                wandb_dict[f"{stage}_psnr"] = psnr_.item()
-                wandb_dict[f"{stage}_#points"] = gaussians.get_xyz.shape[0]
-                test_rend = render_wandb_image(scene, gaussians, [test_cams[iteration%len(test_cams)]], render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
-                train_rend = render_wandb_image(scene, gaussians, [train_cams[iteration%len(train_cams)]], render, pipe, background, stage+"train", iteration,timer.get_elapsed_time(),scene.dataset_type)
-                wandb_dict[f"{stage}_test_[GT-Render-Depth]"] = wandb.Image(test_rend, caption=f"iter {iteration}")
-                wandb_dict[f"{stage}_train_[GT-Render-Depth[]"] = wandb.Image(train_rend, caption=f"iter {iteration}")
-                # breakpoint()
-                wandb.log(wandb_dict, step=iteration+step_offset)
-                # image_np = image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
-                # gt_np = gt_image_tensor[0][:3].permute(1, 2, 0).detach().cpu().numpy()
-                # image_np = np.concatenate((gt_np, image_np), axis=1)
-                # comparison = (np.clip(image_np,0,1) * 255).astype('uint8')
-            
+
         loss.backward()
         if torch.isnan(loss).any():
             print("loss is nan,end training, reexecv program now.")
-            
             wandb.finish()
-            os.execv(sys.executable, [sys.executable] + sys.argv)
+            sys.exit(1) # exit
+            # os.execv(sys.executable, [sys.executable] + sys.argv)
             
         viewspace_point_tensor_grad = torch.zeros_like(viewspace_point_tensor)
         for idx in range(0, len(viewspace_point_tensor_list)):
@@ -277,7 +290,30 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
 
             # Log and save
             timer.pause()
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, [pipe, background], stage, scene.dataset_type)
+            if scene.dataset_type in ["Diva360"]:
+                # wandb_dict = {}
+                wandb_dict[f"{stage}_train_loss"] = loss.item()
+                wandb_dict[f"{stage}_train_L1_loss"] = Ll1.item()
+                wandb_dict[f"{stage}_train_psnr"] = psnr_.item()
+                wandb_dict[f"{stage}_#points"] = gaussians.get_xyz.shape[0]
+                if stage == "coarse" and iteration % 500 == 0:
+                    print("Rendering reconstruction in a viewpoint.")
+                    train_rends = render_wandb_image(scene, gaussians, [train_cams[iteration%len(train_cams)]], render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                    wandb_dict["Recon_[GT-Render]_ITER{}".format(iteration)] = train_rends
+                if stage == "fine" and iteration % 500 == 0:
+                    print("\n[ITER {}] Evaluating test set".format(iteration))
+                    metric_dict = wandb_metric_report(iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, [pipe, background], stage, scene.dataset_type, wandb_dict)
+                    wandb_dict.update(metric_dict)
+                    
+                    print("done")
+                    print("\nLogging images into wandb...\n")
+                    
+                    test_rends = render_wandb_image(scene, gaussians, test_cams, render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                    wandb_dict[f"Deform_testview[GT-Render]_ITER{iteration}"] = test_rends
+                    
+                wandb.log(wandb_dict, step=iteration+step_offset)
+            else:
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, [pipe, background], stage, scene.dataset_type)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, stage)
@@ -331,34 +367,45 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" +f"_{stage}_" + str(iteration) + ".pth")
-def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, expname):
+def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, expname,
+             idx_from: str, idx_to: str, cam_idx: str):
     # first_iter = 0
     tb_writer = prepare_output_and_logger(expname)
     gaussians = GaussianModel(dataset.sh_degree, hyper)
     dataset.model_path = args.model_path
     timer = Timer()
-    scene = Scene(dataset, gaussians, load_coarse=None)
+    scene = Scene(dataset, gaussians, load_coarse=None,
+                  idx_from=idx_from, idx_to=idx_to, cam_idx=cam_idx)
+    
+    is_gesi = True if cam_idx != None or idx_from != None or idx_to != None \
+        else False
+        
     timer.start()
     
     object_name = dataset.source_path.split("/")[-1]
     wandb.init(
         project=f"4DGS_{scene.dataset_type}",
-        name=f"{object_name}",
-        group="debug",
+        name=f"{object_name}_From{idx_from}_To{idx_to}_Cam{cam_idx}",
+        group="0514_Diva360RunAll",
         config={
             "Modelparams": vars(dataset),
             "ModelHiddenParams": vars(hyper),
             "OptimizationParams": vars(opt),
             "PipelineParams": vars(pipe),
+            "idx_from": idx_from,
+            "idx_to": idx_to,
+            "cam_idx": cam_idx
         },
     )
     
     scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations,
                              checkpoint_iterations, checkpoint, debug_from,
-                             gaussians, scene, "coarse", tb_writer, opt.coarse_iterations,timer)
+                             gaussians, scene, "coarse", tb_writer, opt.coarse_iterations,timer,
+                             is_gesi=is_gesi)
     scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations,
                          checkpoint_iterations, checkpoint, debug_from,
-                         gaussians, scene, "fine", tb_writer, opt.iterations,timer)
+                         gaussians, scene, "fine", tb_writer, opt.iterations,timer,
+                         is_gesi=is_gesi)
     wandb.finish()
 def prepare_output_and_logger(expname):    
     if not args.model_path:
@@ -434,12 +481,64 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_histogram(f"{stage}/scene/motion_histogram", scene.gaussians._deformation_accum.mean(dim=-1)/100, iteration,max_bins=500)
         
         torch.cuda.empty_cache()
+        
+from lpipsPyTorch.modules.lpips import LPIPS
+def wandb_metric_report(iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, stage, dataset_type
+                          , wandb_dict):
+    # if tb_writer:
+    #     tb_writer.add_scalar(f'{stage}/train_loss_patches/l1_loss', Ll1.item(), iteration)
+    #     tb_writer.add_scalar(f'{stage}/train_loss_patchestotal_loss', loss.item(), iteration)
+    #     tb_writer.add_scalar(f'{stage}/iter_time', elapsed, iteration)
+    # Report test and samples of training set
+    torch.cuda.empty_cache()
+    validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()},
+                            {'name': 'train', 'cameras' : [scene.getTrainCameras()[-1]]})
+    lpips_vgg = LPIPS(net_type="vgg").cuda().eval()
+    lpips_alex = LPIPS(net_type="alex").cuda().eval()
+    for config in validation_configs:
+        if config['cameras'] and len(config['cameras']) > 0:
+            # breakpoint()
+            print(f"Evaluatting {config['name']} set, {len(config['cameras'])} cameras")
+            ssims = []
+            psnrs = []
+            lpipss = []
+            lpipsa = []
+            ms_ssims = []
+            Dssims = []
+            wandb_images = []
+            for idx, viewpoint in enumerate(config['cameras']):
+                image = torch.clamp(renderFunc(viewpoint, scene.gaussians,stage=stage, cam_type=dataset_type, *renderArgs)["render"], 0.0, 1.0)
+                gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+                # breakpoint()
+                # l1_test += l1_loss(image, gt_image).mean().double()
+                # psnr_test += psnr(image, gt_image, mask=None).mean().double()
+                # ssim_test += ssim(image, gt_image).mean().double()
+                # breakpoint()
+                ssims.append(ssim(image, gt_image.float()).mean())
+                lpipsa.append(lpips_alex(image, gt_image.float()).mean())
+                psnrs.append(psnr(image, gt_image).mean())
+                lpipss.append(lpips_vgg(image, gt_image.float()).mean())
+                ms_ssims.append(ms_ssim(image.unsqueeze(0), gt_image.unsqueeze(0).float(), data_range=1, size_average=True ))
+                Dssims.append((1-ms_ssims[-1])/2)
+            # psnr_test /= len(config['cameras'])
+            # l1_test /= len(config['cameras'])
+            wandb_dict[f"Deform_{config['name']}_SSIM"] = torch.tensor(ssims).mean().item()
+            wandb_dict[f"Deform_{config['name']}_PSNR"] = torch.tensor(psnrs).mean().item()
+            wandb_dict[f"Deform_{config['name']}_LPIPS-vgg"] = torch.tensor(lpipss).mean().item()
+            wandb_dict[f"Deform_{config['name']}_LPIPS-alex"] = torch.tensor(lpipsa).mean().item()
+            wandb_dict[f"Deform_{config['name']}_MS-SSIM"] = torch.tensor(ms_ssims).mean().item()
+            wandb_dict[f"Deform_{config['name']}_D-SSIM"] = torch.tensor(Dssims).mean().item()
+            print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], wandb_dict[f"Deform_{config['name']}_SSIM"], wandb_dict[f"Deform_{config['name']}_PSNR"]))
+    torch.cuda.empty_cache()
+    return wandb_dict
+        
 def setup_seed(seed):
      torch.manual_seed(seed)
      torch.cuda.manual_seed_all(seed)
      np.random.seed(seed)
      random.seed(seed)
      torch.backends.cudnn.deterministic = True
+     
 if __name__ == "__main__":
     # Set up command line argument parser
     # torch.set_default_tensor_type('torch.FloatTensor')
@@ -461,6 +560,10 @@ if __name__ == "__main__":
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--expname", type=str, default = "")
     parser.add_argument("--configs", type=str, default = "")
+
+    parser.add_argument("--idx_from", type=str)
+    parser.add_argument("--idx_to", type=str)
+    parser.add_argument("--cam_idx", type=str)
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
@@ -476,9 +579,12 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     # Start GUI server, configure and run training
-    network_gui.init(args.ip, args.port)
+    # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), hp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.expname)
+
+    # breakpoint()
+    
+    training(lp.extract(args), hp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.expname, args.idx_from, args.idx_to, args.cam_idx)
 
     # All done
     print("\nTraining complete.")

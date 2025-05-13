@@ -41,6 +41,7 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
         self.original_image = image.clamp(0.0, 1.0)[:3,:,:] # RGBA -> RGB
+        self.rgba_gt_array = image.clamp(0.0, 1.0)
         # breakpoint()
         # .to(self.data_device)
         self.image_width = self.original_image.shape[2]
@@ -62,17 +63,19 @@ class Camera(nn.Module):
 
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1)
         # .cuda()
-        # self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1)
-        self.projection_matrix = getProjectionMatrixShift(
-            znear=self.znear,
-            zfar=self.zfar,
-            fovX=self.FoVx,
-            fovY=self.FoVy,
-            cx=cx_px,
-            cy=cy_px,
-            width=image_width,
-            height=image_height,
-        ).transpose(0,1)
+        if cx_px is not None: # Diva360
+            self.projection_matrix = getProjectionMatrixShift(
+                znear=self.znear,
+                zfar=self.zfar,
+                fovX=self.FoVx,
+                fovY=self.FoVy,
+                cx=cx_px,
+                cy=cy_px,
+                width=image_width,
+                height=image_height,
+            ).transpose(0,1)
+        else:
+            self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1)
         # .cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]

@@ -30,5 +30,5 @@ OptimizationParams = dict(
     # pruning_interval = 2000
 )
 ModelParams = dict(
-    white_background=False,
+    white_background=True,
     render_process=False)

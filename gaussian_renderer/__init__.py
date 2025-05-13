@@ -126,6 +126,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scales = scales_final,
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
+    # breakpoint()
     # time4 = get_time()
     # print("rasterization:",time4-time3)
     # breakpoint()

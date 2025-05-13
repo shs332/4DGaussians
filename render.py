@@ -78,7 +78,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     
     imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'video_rgb.mp4'), render_images, fps=30)
-def render_sets(dataset : ModelParams, hyperparam, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, skip_video: bool):
+def render_sets(dataset : ModelParams, hyperparam, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, skip_video: bool, idx_from : str=None, idx_to : str=None, cam_idx : str=None):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree, hyperparam)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
@@ -92,11 +92,13 @@ def render_sets(dataset : ModelParams, hyperparam, iteration : int, pipeline : P
         if not skip_test:
             # breakpoint()
             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background,cam_type)
-            # test_cameras = scene.getTestCameras()
-            # new_cameras = [test_cameras[i] for i in range(100)] # every other camera
-            # render_set(dataset.model_path, "test", scene.loaded_iter, new_cameras, gaussians, pipeline, background,cam_type) # for test
+            
         if not skip_video:
-            render_set(dataset.model_path,"video",scene.loaded_iter,scene.getVideoCameras(),gaussians,pipeline,background,cam_type)
+            render_set(dataset.model_path, "video",scene.loaded_iter,scene.getVideoCameras(),gaussians,pipeline,background,cam_type)
+
+        if idx_from != None and idx_to != None and cam_idx != None:
+            render_set() ### TODO
+            
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Testing script parameters")
@@ -109,6 +111,11 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--skip_video", action="store_true")
     parser.add_argument("--configs", type=str)
+    
+    parser.add_argument("--idx_from", type=str)
+    parser.add_argument("--idx_to", type=str)
+    parser.add_argument("--cam_idx", type=str)
+    
     args = get_combined_args(parser)
     print("Rendering " , args.model_path)
     if args.configs:
@@ -119,4 +126,4 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
-    render_sets(model.extract(args), hyperparam.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.skip_video)
+    render_sets(model.extract(args), hyperparam.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.skip_video, args.idx_from, args.idx_to, args.cam_idx)

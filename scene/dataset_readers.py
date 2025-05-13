@@ -683,7 +683,7 @@ def readMultipleViewinfos(datadir,llffhold=8):
     return scene_info
 
 
-def readDiva360infos(datadir, white_background=False): 
+def readDiva360infos(datadir, frame_from, frame_to, cam_idx, white_background): 
     ### TODO: implement this function ### 
     # with open(os.path.join(datadir, "transforms_train.json"), "r") as f:
     #     train_json = json.load(f)
@@ -693,13 +693,15 @@ def readDiva360infos(datadir, white_background=False):
     # Diva360_dataset 생성
     from scene.Diva360 import Diva360_dataset
 
+    # breakpoint()
     print("\nLoading train camera infos...\n")
     train_cam_infos = Diva360_dataset(cam_folder=datadir, 
-                                      split="train")
+                                      split="train", frame_from=frame_from, frame_to=frame_to, cam_idx=cam_idx, white_background=white_background)
+        
     print("\nLoading test camera infos...\n")
     test_cam_infos = Diva360_dataset(cam_folder=datadir, 
-                                     split="test")
-
+                                     split="test", frame_from=None, frame_to=frame_to, cam_idx=cam_idx, white_background=white_background)
+    # breakpoint()
     # format_infos 함수를 사용하여 train_cam_infos 포맷 변환
     train_cam_infos_ = format_infos_diva360(train_cam_infos, "train")
     
@@ -718,7 +720,6 @@ def readDiva360infos(datadir, white_background=False):
     # We create random points inside the bounds of Diva360 (aabb=4)
     xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3 
     shs = np.random.random((num_pts, 3)) / 255.0
-    # colors = np.ones((num_pts, 3)) ## TODO: check
     
     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
 
@@ -733,48 +734,6 @@ def readDiva360infos(datadir, white_background=False):
     
     return scene_info
 
-def readDFAinfos(datadir):
-    from scene.Diva360 import Diva360_dataset
-
-    print("\nLoading train camera infos...\n")
-    train_cam_infos = Diva360_dataset(cam_folder=datadir, 
-                                      split="train")
-    print("\nLoading test camera infos...\n")
-    test_cam_infos = Diva360_dataset(cam_folder=datadir, 
-                                     split="test")
-
-    # format_infos 함수를 사용하여 train_cam_infos 포맷 변환
-    train_cam_infos_ = format_infos_diva360(train_cam_infos, "train")
-    
-    # Normalization 계산
-    nerf_normalization = getNerfppNorm(train_cam_infos_)
-    print("\nScene radius: ", nerf_normalization["radius"])
-    print("Scene translation: ", nerf_normalization["translate"], "\n")
-    # breakpoint()
-
-    # 랜덤 포인트 클라우드 생성
-    ply_path = os.path.join(datadir, "points3D_diva360.ply")
-
-    num_pts = 500000
-    print(f"Generating random point cloud ({num_pts})...")
-
-    # We create random points inside the bounds of Diva360 (aabb=4)
-    xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3 
-    shs = np.random.random((num_pts, 3)) / 255.0
-    # colors = np.ones((num_pts, 3)) ## TODO: check
-    
-    pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
-
-    # SceneInfo 생성 및 반환
-    scene_info = SceneInfo(point_cloud=pcd,
-                           train_cameras=train_cam_infos,
-                           test_cameras=test_cam_infos,
-                           video_cameras=test_cam_infos.video_cam_infos,
-                           maxtime=1.0,
-                           nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
-    return 
-
 
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
@@ -784,5 +743,4 @@ sceneLoadTypeCallbacks = {
     "PanopticSports" : readPanopticSportsinfos,
     "MultipleView": readMultipleViewinfos,
     "Diva360" : readDiva360infos,
-    "DFA" : readDFAinfos
 }
