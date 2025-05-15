@@ -6,6 +6,8 @@ from utils.graphics_utils import fov2focal, focal2fov
 import torch
 from utils.camera_utils import loadCam
 from utils.graphics_utils import focal2fov
+
+
 class FourDGSdataset(Dataset):
     def __init__(
         self,
@@ -20,16 +22,18 @@ class FourDGSdataset(Dataset):
         # breakpoint()
 
         if self.dataset_type != "PanopticSports":
-            try: # try to load the image from the dataset, diva360 this case
-                image, w2c, time, cx_px, cy_px, image_width, image_height = self.dataset[index]
+            try: # Diva360/DFA
+                image, w2c, time, cx_px, cy_px, fx, fy = self.dataset[index]
                 R,T = w2c
-                FovX = focal2fov(self.dataset.focal[0], image.shape[2])
-                FovY = focal2fov(self.dataset.focal[0], image.shape[1]) # use same focal length for both axes
+                image_width = image.shape[2]
+                image_height = image.shape[1]
+                FovX = focal2fov(fx, image_width)
+                FovY = focal2fov(fy, image_height)
                 mask=None
                 
                 return Camera(colmap_id=index,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,gt_alpha_mask=None,
                               image_name=f"{index}",uid=index,data_device=torch.device("cuda"),time=time, mask=mask,
-                              cx_px=cx_px, cy_px=cy_px, image_width=image_width, image_height=image_height)
+                              cx_px=cx_px, cy_px=cy_px)
             except: # single image per camera, ex) dnerf
                 caminfo = self.dataset[index]
                 image = caminfo.image

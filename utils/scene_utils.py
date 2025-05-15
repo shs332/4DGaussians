@@ -73,7 +73,6 @@ def render_wandb_image(scene, gaussians, viewpoints, render_func, pipe, backgrou
         render_pkg = render_func(viewpoint, gaussians, pipe, background, stage=stage, cam_type=cam_type)
 
         image = render_pkg["render"]
-        depth = render_pkg["depth"]
         if dataset_type == "PanopticSports":
             gt_np = viewpoint['image'].permute(1,2,0).cpu().numpy()
         else:
@@ -90,10 +89,10 @@ def render_wandb_image(scene, gaussians, viewpoints, render_func, pipe, backgrou
         image_np = image_np[::2, ::2, :]
         return image_np
 
-    image_wandb = []
+    columns = ['image']
+    image_table = wandb.Table(columns=columns)
     for idx in range(len(viewpoints)):
         image_np = render(gaussians,viewpoints[idx],None,scaling = 1,cam_type=dataset_type)
-        log_image = wandb.Image(image_np, caption=f"camera{viewpoints[idx].uid}")
-        image_wandb.append(log_image)      
+        image_table.add_data(wandb.Image(image_np))
         
-    return image_wandb
+    return image_table

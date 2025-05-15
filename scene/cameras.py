@@ -21,8 +21,8 @@ class Camera(nn.Module):
                  mask = None, depth=None,
                  cx_px=None,
                  cy_px=None,
-                 image_width=None,
-                 image_height=None,
+                #  image_width=None,
+                #  image_height=None,
                  ):
         super(Camera, self).__init__()
 
@@ -63,7 +63,7 @@ class Camera(nn.Module):
 
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1)
         # .cuda()
-        if cx_px is not None: # Diva360
+        if cx_px is not None: # Diva360/DFA
             self.projection_matrix = getProjectionMatrixShift(
                 znear=self.znear,
                 zfar=self.zfar,
@@ -71,8 +71,8 @@ class Camera(nn.Module):
                 fovY=self.FoVy,
                 cx=cx_px,
                 cy=cy_px,
-                width=image_width,
-                height=image_height,
+                width=self.image_width,
+                height=self.image_height,
             ).transpose(0,1)
         else:
             self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1)

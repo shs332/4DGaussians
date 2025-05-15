@@ -83,7 +83,6 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
     test_cams = scene.getTestCameras()
     train_cams = scene.getTrainCameras()
 
-
     if not viewpoint_stack and not opt.dataloader:
         # dnerf's branch
         viewpoint_stack = [i for i in train_cams]
@@ -158,7 +157,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # Pick a random Camera
 
         # dynerf's branch
-        if is_gesi and stage == "fine" and scene.dataset_type == "Diva360":
+        if is_gesi and stage == "fine":
             viewpoint_cams = [viewpoint_stack[-1]] # one image only for training
         elif opt.dataloader and not load_in_memory:
             try:
@@ -290,26 +289,33 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
 
             # Log and save
             timer.pause()
-            if scene.dataset_type in ["Diva360"]:
+            if scene.dataset_type in ["Diva360", "DFA"]:
                 # wandb_dict = {}
-                wandb_dict[f"{stage}_train_loss"] = loss.item()
-                wandb_dict[f"{stage}_train_L1_loss"] = Ll1.item()
-                wandb_dict[f"{stage}_train_psnr"] = psnr_.item()
-                wandb_dict[f"{stage}_#points"] = gaussians.get_xyz.shape[0]
+                wandb_dict[f"{stage}/train_loss"] = loss.item()
+                wandb_dict[f"{stage}/train_L1_loss"] = Ll1.item()
+                wandb_dict[f"{stage}/train_psnr"] = psnr_.item()
+                wandb_dict[f"{stage}/#points"] = gaussians.get_xyz.shape[0]
                 if stage == "coarse" and iteration % 500 == 0:
                     print("Rendering reconstruction in a viewpoint.")
-                    train_rends = render_wandb_image(scene, gaussians, [train_cams[iteration%len(train_cams)]], render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
-                    wandb_dict["Recon_[GT-Render]_ITER{}".format(iteration)] = train_rends
+                    # breakpoint()
+                    train_rend = render_wandb_image(scene, gaussians, [train_cams[(iteration-1)%(len(train_cams)-1)]],
+                                                    render, pipe, background, stage+"train", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                    wandb_dict[f"Reconstruction_[GT-Render]/ITER{iteration}"] = train_rend
                 if stage == "fine" and iteration % 500 == 0:
-                    print("\n[ITER {}] Evaluating test set".format(iteration))
+                    print(f"\n[ITER {iteration}] Evaluating test set")
                     metric_dict = wandb_metric_report(iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, [pipe, background], stage, scene.dataset_type, wandb_dict)
                     wandb_dict.update(metric_dict)
                     
                     print("done")
-                    print("\nLogging images into wandb...\n")
+                    print("Logging images into wandb...\n")
                     
-                    test_rends = render_wandb_image(scene, gaussians, test_cams, render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
-                    wandb_dict[f"Deform_testview[GT-Render]_ITER{iteration}"] = test_rends
+                    train_rend = render_wandb_image(scene, gaussians, [train_cams[-1]],
+                                                    render, pipe, background, stage+"train", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                    test_rends = render_wandb_image(scene, gaussians, test_cams,
+                                                    render, pipe, background, stage+"test", iteration,timer.get_elapsed_time(),scene.dataset_type)
+                    
+                    wandb_dict[f"Deform_testview[GT-Render]/ITER{iteration}"] = test_rends
+                    wandb_dict[f"Deform_trainview[GT-Render]/ITER{iteration}"] = train_rend                    
                     
                 wandb.log(wandb_dict, step=iteration+step_offset)
             else:
@@ -317,7 +323,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, stage)
-            if dataset.render_process:
+            if dataset.render_process: # no use for deform exp.
                 if (iteration < 1000 and iteration % 10 == 9) \
                     or (iteration < 3000 and iteration % 50 == 49) \
                         or (iteration < 60000 and iteration %  100 == 99) :
@@ -377,7 +383,7 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
     scene = Scene(dataset, gaussians, load_coarse=None,
                   idx_from=idx_from, idx_to=idx_to, cam_idx=cam_idx)
     
-    is_gesi = True if cam_idx != None or idx_from != None or idx_to != None \
+    is_gesi = True if cam_idx != None and idx_from != None and idx_to != None \
         else False
         
     timer.start()
@@ -386,7 +392,7 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
     wandb.init(
         project=f"4DGS_{scene.dataset_type}",
         name=f"{object_name}_From{idx_from}_To{idx_to}_Cam{cam_idx}",
-        group="0514_Diva360RunAll",
+        group="Testing",
         config={
             "Modelparams": vars(dataset),
             "ModelHiddenParams": vars(hyper),
@@ -505,7 +511,6 @@ def wandb_metric_report(iteration, Ll1, loss, l1_loss, elapsed, testing_iteratio
             lpipsa = []
             ms_ssims = []
             Dssims = []
-            wandb_images = []
             for idx, viewpoint in enumerate(config['cameras']):
                 image = torch.clamp(renderFunc(viewpoint, scene.gaussians,stage=stage, cam_type=dataset_type, *renderArgs)["render"], 0.0, 1.0)
                 gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
@@ -522,13 +527,12 @@ def wandb_metric_report(iteration, Ll1, loss, l1_loss, elapsed, testing_iteratio
                 Dssims.append((1-ms_ssims[-1])/2)
             # psnr_test /= len(config['cameras'])
             # l1_test /= len(config['cameras'])
-            wandb_dict[f"Deform_{config['name']}_SSIM"] = torch.tensor(ssims).mean().item()
-            wandb_dict[f"Deform_{config['name']}_PSNR"] = torch.tensor(psnrs).mean().item()
-            wandb_dict[f"Deform_{config['name']}_LPIPS-vgg"] = torch.tensor(lpipss).mean().item()
-            wandb_dict[f"Deform_{config['name']}_LPIPS-alex"] = torch.tensor(lpipsa).mean().item()
-            wandb_dict[f"Deform_{config['name']}_MS-SSIM"] = torch.tensor(ms_ssims).mean().item()
-            wandb_dict[f"Deform_{config['name']}_D-SSIM"] = torch.tensor(Dssims).mean().item()
-            print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], wandb_dict[f"Deform_{config['name']}_SSIM"], wandb_dict[f"Deform_{config['name']}_PSNR"]))
+            wandb_dict[f"Deform_{config['name']}/SSIM"] = torch.tensor(ssims).mean().item()
+            wandb_dict[f"Deform_{config['name']}/PSNR"] = torch.tensor(psnrs).mean().item()
+            wandb_dict[f"Deform_{config['name']}/LPIPS-vgg"] = torch.tensor(lpipss).mean().item()
+            wandb_dict[f"Deform_{config['name']}/LPIPS-alex"] = torch.tensor(lpipsa).mean().item()
+            wandb_dict[f"Deform_{config['name']}/MS-SSIM"] = torch.tensor(ms_ssims).mean().item()
+            wandb_dict[f"Deform_{config['name']}/D-SSIM"] = torch.tensor(Dssims).mean().item()
     torch.cuda.empty_cache()
     return wandb_dict
         

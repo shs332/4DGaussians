@@ -53,6 +53,10 @@ class Scene:
             print("Found Diva360 folder, assuming Diva360 data set!")
             scene_info = sceneLoadTypeCallbacks["Diva360"](args.source_path, idx_from, idx_to, cam_idx, args.white_background)
             dataset_type="Diva360"
+        elif os.path.split(os.path.split(args.source_path)[0])[1] == "DFA":
+            print("Found DFA folder, assuming DFA data set!")
+            scene_info = sceneLoadTypeCallbacks["DFA"](args.source_path, idx_from, idx_to, cam_idx, args.white_background)
+            dataset_type="DFA"
         elif os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, args.llffhold)
             dataset_type="colmap"
