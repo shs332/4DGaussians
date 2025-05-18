@@ -23,6 +23,7 @@ class DFA_dataset(Dataset):
         cam_idx: str=None,
         white_background=True
     ):
+        # breakpoint()
         object_name = os.path.split(cam_folder)[-1]
         self.white_background = white_background
         self.dir_from = f"/data2/wlsgur4011/GESI/SC-GS/data/DFA_processed/{object_name}/{frame_from}"
@@ -46,7 +47,7 @@ class DFA_dataset(Dataset):
         self.FovX = focal2fov(self.focal[1], width)
         self.transform = transforms.ToTensor()
         self.image_paths, self.image_poses, self.image_times, self.cxs, self.cys = [], [], [], [], []
-        
+        # breakpoint()
         # 이미지 경로, 포즈, 시간 
         if split == "train":
             for w2c, file_name, intrinsic in zip(w2c_list1, file_name_list1, intrinsic_list1): # from
@@ -101,8 +102,8 @@ class DFA_dataset(Dataset):
         arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
 
         img = torch.from_numpy(arr).permute(2, 0, 1)  # [3, H, W]
-        image_width = img.shape[2]
-        image_height = img.shape[1]
+        # image_width = img.shape[2]
+        # image_height = img.shape[1]
         
         return img, self.image_poses[index], self.image_times[index], self.cxs[index], \
             self.cys[index], self.focal[1], self.focal[0] ## fL_x, fl_y
@@ -189,22 +190,21 @@ def load_intrinsics(data_dir):
     
     return intrinsic_list
 
-# if __name__ == "__main__":
-#     object_dir = "/data2/wlsgur4011/GESI/SC-GS/data/DFA_processed/beagle_dog(s1)"
+if __name__ == "__main__":
+    object_dir = "/data2/wlsgur4011/GESI/SC-GS/data/DFA_processed/beagle_dog(s1)"
     
-#     train = DFA_dataset(object_dir,
-#         "train",
-#         frame_from = '520',
-#         frame_to = '525',
-#         cam_idx = '16',
-#         white_background=True)
-#     test = DFA_dataset(object_dir,
-#         "test",
-#         frame_from = '520',
-#         frame_to = '525',
-#         cam_idx = '16',
-#         white_background=True)
+    train = DFA_dataset(object_dir,
+        "train",
+        frame_from = '520',
+        frame_to = '525',
+        cam_idx = '16',
+        white_background=True)
+    test = DFA_dataset(object_dir,
+        "test",
+        frame_from = '520',
+        frame_to = '525',
+        cam_idx = '16',
+        white_background=True)
     
-#     breakpoint()
 
     

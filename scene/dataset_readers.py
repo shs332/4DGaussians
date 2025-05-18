@@ -738,6 +738,7 @@ def readDFAinfos(datadir, frame_from, frame_to, cam_idx, white_background):
                                      split="test", frame_from=frame_from, frame_to=frame_to, cam_idx=cam_idx, white_background=white_background)
 
     ### TODO
+    # breakpoint()
     train_cam_infos_ = format_infos_DFAandDiva(train_cam_infos, "train")
     
     # Normalization 계산
@@ -751,7 +752,7 @@ def readDFAinfos(datadir, frame_from, frame_to, cam_idx, white_background):
 
     num_pts = 500000
     print(f"Generating random point cloud ({num_pts})...")
-    xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3 
+    xyz = np.random.random((num_pts, 3)) * 2 * nerf_normalization["radius"] - nerf_normalization["radius"]
     shs = np.random.random((num_pts, 3)) / 255.0
     
     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))

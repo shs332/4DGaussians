@@ -389,19 +389,16 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
     timer.start()
     
     object_name = dataset.source_path.split("/")[-1]
+    groupname = f"0515_Runall_{scene.dataset_type}" if scene.dataset_type == "Diva360" else "v5.16_DFA"
     wandb.init(
-        project=f"4DGS_{scene.dataset_type}",
+        project=f"4DGS_reproduction",
         name=f"{object_name}_From{idx_from}_To{idx_to}_Cam{cam_idx}",
-        group="Testing",
+        group=groupname,
         config={
-            "Modelparams": vars(dataset),
-            "ModelHiddenParams": vars(hyper),
-            "OptimizationParams": vars(opt),
-            "PipelineParams": vars(pipe),
             "idx_from": idx_from,
             "idx_to": idx_to,
             "cam_idx": cam_idx
-        },
+        }
     )
     
     scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations,
@@ -487,7 +484,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_histogram(f"{stage}/scene/motion_histogram", scene.gaussians._deformation_accum.mean(dim=-1)/100, iteration,max_bins=500)
         
         torch.cuda.empty_cache()
-        
+
 from lpipsPyTorch.modules.lpips import LPIPS
 def wandb_metric_report(iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, stage, dataset_type
                           , wandb_dict):

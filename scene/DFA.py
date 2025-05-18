@@ -89,7 +89,6 @@ class DFA_dataset(Dataset):
                     self.cys.append(cy)
                     self.image_times.append(1.0)  
                 idx += 1
-    
     def __len__(self):
         return len(self.image_paths)
     
@@ -190,22 +189,22 @@ def load_intrinsics(data_dir):
     
     return intrinsic_list
 
-# if __name__ == "__main__":
-#     object_dir = "/data2/wlsgur4011/GESI/SC-GS/data/DFA_processed/beagle_dog(s1)"
+if __name__ == "__main__":
+    object_dir = "/data2/wlsgur4011/GESI/SC-GS/data/DFA_processed/beagle_dog(s1)"
     
-#     train = DFA_dataset(object_dir,
-#         "train",
-#         frame_from = '520',
-#         frame_to = '525',
-#         cam_idx = '16',
-#         white_background=True)
-#     test = DFA_dataset(object_dir,
-#         "test",
-#         frame_from = '520',
-#         frame_to = '525',
-#         cam_idx = '16',
-#         white_background=True)
+    train = DFA_dataset(object_dir,
+        "train",
+        frame_from = '520',
+        frame_to = '525',
+        cam_idx = '16',
+        white_background=True)
+    test = DFA_dataset(object_dir,
+        "test",
+        frame_from = '520',
+        frame_to = '525',
+        cam_idx = '16',
+        white_background=True)
     
-#     breakpoint()
+    breakpoint()
 
     
