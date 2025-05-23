@@ -14,5 +14,3 @@ data
 multipleviewdata_temp/**/*.png
 test
 wandb
-submodules/simple-knn/
-submodules/depth-diff_gaussian_rasterization/
